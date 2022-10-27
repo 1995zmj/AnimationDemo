@@ -2,31 +2,10 @@
 #include "CoreMinimal.h"
 #include "CharacterEnum_ZMJ.generated.h"
 
-// USTRUCT()
-// struct ANIMATIONDEMO_API FTransRule
-// {
-// 	GENERATED_BODY()
-// public:
-// 	UPROPERTY()
-// 	TMap<FName, FName> KeyWord_mapping_TargetState;
-//
-// 	UPROPERTY()
-// 	FName FromState;
-// };
-//
-// USTRUCT()
-// struct ANIMATIONDEMO_API FFSMData
-// {
-// 	GENERATED_BODY()
-// public:
-// 	UPROPERTY()
-// 	TMap<FName, FTransRule> CurrState_Mapping_TransRule;
-// };
-
 UENUM(BlueprintType)
 enum EGait_ZMJ
 {
-	Walking,
+	Walking = 0,
 	Runing,
 	Sprinting,
 };
@@ -55,8 +34,8 @@ enum EOverlayState_ZMJ
 	Feminine,
 	Injured,
 	Rifle,
-	Pistol 1H,
-	Pistol 2H,
+	Pistol_1H,
+	Pistol_2H,
 	Bow,
 	Torch,
 	Binoculars,
@@ -69,6 +48,26 @@ enum EStance_ZMJ
 {
 	Standing,
 	Crouching,
+};
+
+UENUM(BlueprintType)
+enum EMovementState_ZMJ
+{
+	None = 0,
+	Grounded,
+	InAir,
+	Mantling,
+	Ragdoll,
+};
+
+UENUM(BlueprintType)
+enum class EMovementAction_ZMJ : uint8
+{
+	None = 0,
+	LowMantle UMETA(DisplayName = "LowMantle"),
+	HighMantle UMETA(DisplayName = "HighMantle"),
+	Rolling UMETA(DisplayName = "Rolling"),
+	GettingUp UMETA(DisplayName = "GettingUp"),
 };
 
 

@@ -28,25 +28,36 @@ public:
 
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-	
 	UFUNCTION()
 	void MoveForward(float Value);
-
 	UFUNCTION()
 	void MoveRight(float Value);
-
+	
+	// EssentialInformation
+	void SetEssentialValues();
+	FVector CacheValues();
+	FVector CalculateAcceleration();
 	// StatChanges
 	void OnBeginPlay();
 	void OnGaitChanged(EGait_ZMJ NewActualGait);
 	void OnRotationModeChanged(ERotationMode_ZMJ NewRotaionMode);
 	void OnViewModeChanged(EViewMode_ZMJ NewViewMode);
-	void OnOverlayStateChanged();
+	void OnOverlayStateChanged(EOverlayState_ZMJ NewOverlayState);
 
 	// MovementSystem
 	void SetMovementModel();
-
+	void UpdateCharacterMovement();
+	void UpdateDynamicMovementSetting(EGait_ZMJ AllowedGait);
+	FMovementSettings_ZMJ GetTargetMovementSettings();
+	EGait_ZMJ GetAllowedGait();
+	EGait_ZMJ GetActualGait(EGait_ZMJ AllowedGait);
+	bool CanSprint();
+	float GetMappedSpeed();
+	// RotationSystem
+	void UpdateGroudedRotation();
 	// CharacterStates Interfaces
 	void SetViewMode(EViewMode_ZMJ NewViewMode);
+	void SetGait(EGait_ZMJ NewGait);
 	void SetRotationMode(ERotationMode_ZMJ NewRotationMode);
 public:
 	// References
@@ -55,7 +66,17 @@ public:
 	EGait_ZMJ DesiredGait;
 	ERotationMode_ZMJ DesiredRotationMode;
 	EStance_ZMJ DesiredStance;
+	//EssentialInformation
+	FVector Acceleration;
+	bool IsMoving;
+	bool HasMovementInput;
+	FRotator LastVelocityRotation;
+	FRotator LastMovementInputRotation;
+	float Speed;
+	float MovementInputAmount;
+	float AimYawRate;
 	// StateValues
+	EMovementState_ZMJ MovementState;
 	ERotationMode_ZMJ RotationMode;
 	EGait_ZMJ Gait;
 	EStance_ZMJ Stance;
@@ -64,6 +85,13 @@ public:
 	//MovementSystem
 	UPROPERTY(EditAnywhere,BlueprintReadWrite)
 	FDataTableRowHandle MovementModel;
-
-	FMovementSettings_ZMJ* MovementData;
+	FMovementSettings_State_ZMJ* MovementData;
+	FMovementSettings_ZMJ CurrentMovementSettings;
+	// RotationSystem
+	FRotator TargetRotation;
+	FRotator InAirRotation;
+	float YawOffset;
+	// CachedVariables
+	FVector PreviousVelocity;
+	float PreviousAimYaw;
 };
