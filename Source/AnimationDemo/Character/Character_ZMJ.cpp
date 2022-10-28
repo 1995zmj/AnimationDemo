@@ -3,7 +3,9 @@
 
 #include "Character_ZMJ.h"
 
+#include "DrawDebugHelpers.h"
 #include "K2Node_GetDataTableRow.h"
+#include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
 // Sets default values
@@ -18,6 +20,9 @@ ACharacter_ZMJ::ACharacter_ZMJ()
 	OverlayState =EOverlayState_ZMJ::Default;
 	DesiredStance = EStance_ZMJ::Standing;
 
+	LookUpRate = 1.25;
+	LookRightRate = 1.25;
+
 	PreviousVelocity = FVector::ZeroVector;
 }
 
@@ -26,6 +31,8 @@ void ACharacter_ZMJ::BeginPlay()
 { 
 	Super::BeginPlay();
 	OnBeginPlay();
+	
+	MovementModeChangedDelegate.AddDynamic(this, &ACharacter_ZMJ::OnMovementModeChange);
 }
 
 // Called every frame
@@ -37,8 +44,12 @@ void ACharacter_ZMJ::Tick(float DeltaTime)
 	switch (MovementState)
 	{
 	case EMovementState_ZMJ::Grounded:
+		UpdateCharacterMovement();
+		UpdateGroudedRotation();
 		break;
 	}
+
+	
 }
 
 // Called to bind functionality to input
@@ -49,45 +60,102 @@ void ACharacter_ZMJ::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	PlayerInputComponent->BindAxis("MoveForward/Backwards", this, &ACharacter_ZMJ::MoveForward);
 	PlayerInputComponent->BindAxis("MoveRight/Left", this, &ACharacter_ZMJ::MoveRight);
 
-	PlayerInputComponent->BindAxis("LookLeft/Right", this, &ACharacter_ZMJ::AddControllerYawInput);
-	PlayerInputComponent->BindAxis("LookUp/Down", this, &ACharacter_ZMJ::AddControllerPitchInput);
+	PlayerInputComponent->BindAxis("LookLeft/Right", this, &ACharacter_ZMJ::LookRight);
+	PlayerInputComponent->BindAxis("LookUp/Down", this, &ACharacter_ZMJ::LookUp);
 }
 
 
 void ACharacter_ZMJ::MoveForward(float Value)
 {
-	FVector Direction = FRotationMatrix(Controller->GetControlRotation()).GetScaledAxis(EAxis::X);
-	AddMovementInput(Direction, Value);
+	PlayerMovementInput(true, Value);
 }
 
 void ACharacter_ZMJ::MoveRight(float Value)
 {
-	FVector Direction = FRotationMatrix(Controller->GetControlRotation()).GetScaledAxis(EAxis::Y);
-	AddMovementInput(Direction, Value);
+	PlayerMovementInput(false, Value);
 }
 
-//这些值表示胶囊的移动方式以及它想要移动的方式，因此对于任何数据驱动的动画系统都是必不可少的。它们也在整个系统中用于各种功能，所以我发现在一个地方管理它们是最容易的。
+void ACharacter_ZMJ::LookUp(float Value)
+{
+	AddControllerPitchInput(Value * LookUpRate);
+}
+
+void ACharacter_ZMJ::LookRight(float Value)
+{
+	AddControllerYawInput(Value * LookRightRate);
+}
+
+FVector ACharacter_ZMJ::GetControlForwardVector()
+{
+	auto LocalRotation = FRotator::ZeroRotator;
+	LocalRotation.Yaw = GetControlRotation().Yaw;
+	return LocalRotation.Vector();
+}
+
+FVector ACharacter_ZMJ::GetControlRightVector()
+{
+	auto LocalRotation = FRotator::ZeroRotator;
+	LocalRotation.Yaw = GetControlRotation().Yaw;
+	return FRotationMatrix(LocalRotation).GetScaledAxis(EAxis::Y);
+}
+
+float ACharacter_ZMJ::GetAnimCurveValue(FName CurveName)
+{
+	if (IsValid(MainAnimInstance))
+	{
+		return MainAnimInstance->GetCurveValue(CurveName);
+	}
+
+	return  0.0f;
+}
+
+void ACharacter_ZMJ::PlayerMovementInput(bool IsForwardAxis, float AxisValue)
+{
+	switch (MovementState)
+	{
+	case EMovementState_ZMJ::Grounded:
+		// 默认的相机相对运动行为
+		if (IsForwardAxis)
+		{
+			AddMovementInput(GetControlForwardVector(),FixDiagonalGamepadValues(AxisValue));
+		}
+		else
+		{
+			AddMovementInput(GetControlRightVector(),FixDiagonalGamepadValues(AxisValue));
+		}
+		break;
+	}
+}
+
+// 修复对角线手柄值
+float ACharacter_ZMJ::FixDiagonalGamepadValues(float AxisValue)
+{
+	auto t = FMath::GetMappedRangeValueClamped(FVector2D(0.0f, 0.6f), FVector2D(1.0f, 1.2f), FMath::Abs(AxisValue));
+	return FMath::Clamp(t,-1.0f,1.0f);
+}
+
+// 这些值表示胶囊的移动方式以及它想要移动的方式，因此对于任何数据驱动的动画系统都是必不可少的。它们也在整个系统中用于各种功能，所以我发现在一个地方管理它们是最容易的。
 void ACharacter_ZMJ::SetEssentialValues()
 {
 	Acceleration = CalculateAcceleration();
-	UE_LOG(LogTemp, Warning, TEXT("Acceleration : %f"),Acceleration.Size());
+	// UE_LOG(LogTemp, Warning, TEXT("Acceleration : %f"),Acceleration.Size());
 
-	UE_LOG(LogTemp, Warning, TEXT("ue Acceleration : %f"),GetCharacterMovement()->GetCurrentAcceleration().Size());
+	// UE_LOG(LogTemp, Warning, TEXT("ue Acceleration : %f"),GetCharacterMovement()->GetCurrentAcceleration().Size());
 	//通过获取角色的速度来确定角色是否在移动。速度等于水平(x，y)速度的长度，因此不考虑垂直移动。如果角色正在移动，请更新上次的速度旋转。保存该值是因为即使在角色停止之后，了解移动的最后方向可能也很有用。
 	FVector Velocity = GetVelocity();
 	Velocity.Z = 0;
 	Speed = Velocity.Size();
-	UE_LOG(LogTemp, Warning, TEXT("speed : %f"),Speed);
+	// UE_LOG(LogTemp, Warning, TEXT("speed : %f"),Speed);
 
 	IsMoving = Speed > 1.0f;
 	if (IsMoving)
 	{
-		//*返回向量指向的方向对应的FRotator方向。
-		//*将偏航和俯仰设置为正确的数字，并将滚动设置为零，因为无法根据矢量确定滚动。
+		// 返回向量指向的方向对应的FRotator方向。
+		// 将偏航和俯仰设置为正确的数字，并将滚动设置为零，因为无法根据矢量确定滚动。
 		LastVelocityRotation = GetVelocity().ToOrientationRotator();
 	}
 	
-	//通过获取角色的移动输入量来确定角色是否有移动输入。移动输入量等于当前加速度除以最大加速度，因此它的范围是0-1，1是最大可能的输入量，0表示没有。如果角色有移动输入，则更新上次移动输入旋转。
+	// 通过获取角色的移动输入量来确定角色是否有移动输入。移动输入量等于当前加速度除以最大加速度，因此它的范围是0-1，1是最大可能的输入量，0表示没有。如果角色有移动输入，则更新上次移动输入旋转。
 	auto CharacterMovementRef = GetCharacterMovement();
 	auto TempAcceleration = CharacterMovementRef->GetCurrentAcceleration();
 	float AccelerationLength = TempAcceleration.Size();
@@ -99,11 +167,18 @@ void ACharacter_ZMJ::SetEssentialValues()
 		LastMovementInputRotation = TempAcceleration.ToOrientationRotator();
 	}
 
-	//通过比较当前和上一个目标偏航值除以增量秒来设置目标偏航率。这表示摄影机从左向右旋转的速度。
+	// 通过比较当前和上一个目标偏航值除以增量秒来设置目标偏航率。这表示摄影机从左向右旋转的速度。
 	AimYawRate = FMath::Abs((GetControlRotation().Yaw - PreviousAimYaw) / GetWorld()->GetDeltaSeconds());
 }
 
-//通过比较当前速度和以前的速度来计算加速度。移动组件返回的当前加速度等于输入加速度，并不代表角色的实际物理加速度。
+// 缓存要在下一帧计算中使用的某些值
+void ACharacter_ZMJ::CacheValues()
+{
+	PreviousVelocity = GetVelocity();
+	PreviousAimYaw = GetControlRotation().Yaw;
+}
+
+// 通过比较当前速度和以前的速度来计算加速度。移动组件返回的当前加速度等于输入加速度，并不代表角色的实际物理加速度。
 FVector ACharacter_ZMJ::CalculateAcceleration()
 {
 	
@@ -142,6 +217,26 @@ void ACharacter_ZMJ::OnBeginPlay()
 	LastVelocityRotation = TargetRotation;
 	LastMovementInputRotation = TargetRotation;
 	
+}
+
+// 使用角色移动模式更改设置移动状态为正确的值。这允许你拥有一组自定义的移动状态，但仍然使用默认角色移动组件的功能。
+void ACharacter_ZMJ::OnCharacterMovementModeChanged(EMovementMode PrevMovementMode, EMovementMode NewMovementMode,
+	uint8 PrevCustomMode, uint8 NewCustomMode)
+{
+	switch (NewMovementMode)
+	{
+	case  EMovementMode::MOVE_Walking:
+	case  EMovementMode::MOVE_NavWalking:
+		SetMovementState(EMovementState_ZMJ::Grounded);
+		break;
+	}
+}
+
+void ACharacter_ZMJ::OnMovementStateChanged(EMovementState_ZMJ NewMovementState)
+{
+	MovementState = NewMovementState;
+	// TODO 还有其他设置等下次
+	// switch (MovementState) {  }
 }
 
 void ACharacter_ZMJ::OnGaitChanged(EGait_ZMJ NewActualGait)
@@ -213,17 +308,17 @@ void ACharacter_ZMJ::SetMovementModel()
 
 void ACharacter_ZMJ::UpdateCharacterMovement()
 {
-	//设置允许的步态
+	// 设置允许的步态
 	auto AllowedGait = GetAllowedGait();
 
-	//确定实际的步态。如果与当前步态不同，则设置新的步态事件。
+	// 确定实际的步态。如果与当前步态不同，则设置新的步态事件。
 	auto ActualGait = GetActualGait(AllowedGait);
 	if (ActualGait != Gait)
 	{
 		SetGait(ActualGait);
 	}
 	
-	//使用允许的步态来更新运动设置。
+	// 使用允许的步态来更新运动设置。
 	UpdateDynamicMovementSetting(AllowedGait);
 }
 
@@ -233,7 +328,7 @@ void ACharacter_ZMJ::UpdateDynamicMovementSetting(EGait_ZMJ AllowedGait)
 	auto TempCharacterMovement = GetCharacterMovement();
 
 	auto localSpeed = 0.0f;
-	//根据当前允许的步态，更新角色最大行走速度到配置的速度。
+	// 根据当前允许的步态，更新角色最大行走速度到配置的速度。
 	switch (AllowedGait)
 	{
 	case EGait_ZMJ::Walking:
@@ -354,9 +449,7 @@ bool ACharacter_ZMJ::CanSprint()
 			LocalRotation.Normalize();
 			return (MovementInputAmount > 0.9f && FMath::Abs(LocalRotation.Yaw) < 50.f);
 			break;	
-		case ERotationMode_ZMJ::Aiming:
-			return  false;
-			break;
+		
 		}
 	}
 	return false;
@@ -382,24 +475,141 @@ float ACharacter_ZMJ::GetMappedSpeed()
 
 void ACharacter_ZMJ::UpdateGroudedRotation()
 {
-	
+	switch (MovementAction)
+	{
+	case  EMovementAction_ZMJ::None:
+		if (CanUpdateMovingRotation())
+		{
+			switch (RotationMode)
+			{
+			case ERotationMode_ZMJ::VelocityDirection:
+				SmoothCharacterRotation(FRotator(0.0f,0.0f,LastVelocityRotation.Yaw),800,CalculateGroundedRotationRate());
+				break;
+			case ERotationMode_ZMJ::LookingDirection:
+				if (Gait == EGait_ZMJ::Sprinting)
+				{
+					SmoothCharacterRotation(FRotator(0.0f,0.0f,LastVelocityRotation.Yaw),500,CalculateGroundedRotationRate());
+				}
+				else
+				{
+					auto LocalYaw = GetControlRotation().Yaw + GetAnimCurveValue(FName("YawOffset"));
+					SmoothCharacterRotation(FRotator(0.0f,0.0f,LocalYaw),500,CalculateGroundedRotationRate());
+				}
+				break;
+			case ERotationMode_ZMJ::Aiming:
+				SmoothCharacterRotation(FRotator(0.0f,0.0f,GetControlRotation().Yaw),1000,20);
+				break;
+			}
+		}
+		else
+		{
+			// 没有移动的情况下
+			switch (ViewMode)
+			{
+			case EViewMode_ZMJ::ThirdPerson:
+				if (RotationMode == ERotationMode_ZMJ::Aiming)
+				{
+					LimitRotation(-100.0f,100.0f,20.0f);
+				}
+				break;
+			case EViewMode_ZMJ::FirstPerson:
+				LimitRotation(-100.0f,100.0f,20.0f);
+				break;
+			}
+
+			auto LocalRotationAmount = GetAnimCurveValue(FName("RotationAmount"));
+			if (FMath::Abs(LocalRotationAmount) > 0.001)
+			{
+				auto Delta = GetWorld()->GetDeltaSeconds();
+				AddActorWorldRotation(FRotator(0.0f,0.0f,Delta*30.0f*LocalRotationAmount));
+			}
+		}
+		break;
+	}
+}
+// 插值目标旋转额外平滑的旋转行为
+void ACharacter_ZMJ::SmoothCharacterRotation(FRotator Target, const float TargetInterpSpeed, float ActorInterpSpeed)
+{
+	auto LocalDelta = GetWorld()->GetDeltaSeconds();
+	TargetRotation = FMath::RInterpConstantTo(TargetRotation,Target,LocalDelta,TargetInterpSpeed);
+
+	// 第二次过渡 (可能是为了第三人称服务的
+	// )
+	auto LocalRotation = FMath::RInterpConstantTo(GetActorRotation(),TargetRotation,LocalDelta,ActorInterpSpeed);
+
+	SetActorRotation(LocalRotation);
+}
+
+// 防止角色旋转超过特定角度。
+void ACharacter_ZMJ::LimitRotation(float AimYawMin, float AimYawMax, float InterpSpeed)
+{
+	auto LocalControlRotation = GetControlRotation();
+	auto LocalActorRotation = GetActorRotation();
+	FRotator Delta = LocalControlRotation - LocalActorRotation;
+	Delta.Normalize();
+
+	if (!(Delta.Yaw >= AimYawMin && Delta.Yaw >= AimYawMax))
+	{
+		auto LocalYaw = 0.0f;
+		if (Delta.Yaw > 0.0f)
+		{
+			LocalYaw = LocalControlRotation.Yaw + AimYawMin;
+		}
+		else
+		{
+			LocalYaw = LocalControlRotation.Yaw + AimYawMax;
+		}
+
+		SmoothCharacterRotation(FRotator(0.0f,0.0f,LocalYaw),0.0f,InterpSpeed);
+	}
+}
+
+// 在移动设置中使用当前的旋转速率曲线来计算旋转速率。将曲线与映射的速度结合使用，您可以对每个速度的旋转速率进行高水平的控制。如果相机旋转得比较快，请提高速度。
+float ACharacter_ZMJ::CalculateGroundedRotationRate()
+{
+	auto LocalRotationRate = CurrentMovementSettings.RotationRateCurve->GetFloatValue(GetMappedSpeed());
+	auto LocalScale = FMath::GetMappedRangeValueClamped(FVector2D(0.0f, 300.f), FVector2D(1.0f, 3.0f), AimYawRate);
+	return LocalRotationRate*LocalScale;
+}
+
+bool ACharacter_ZMJ::CanUpdateMovingRotation()
+{
+	return (((IsMoving && HasMovementInput) || Speed > 150 ) && !HasAnyRootMotion());
+}
+
+void ACharacter_ZMJ::DrawDebugShapes()
+{
+	// if (true)
+	// {
+	// 	return;
+	// }
+	/*FVector LineStart = FVector::ZeroVector;
+	FVector LineEnd = FVector::ZeroVector;
+	FVector LocalVelocity = GetVelocity();
+	FColor LocalColor = FColor::Red;
+
+	LineStart = GetActorLocation() - FVector(0.0f,0.0f,GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+
+	auto LocalVelocityZero = LocalVelocity.Equals(FVector::ZeroVector,0.0001f);
+	auto t = LocalVelocityZero ? LastVelocityRotation.Vector() : LocalVelocity;
+	LineEnd = LineStart + t.GetUnsafeNormal() * FMath::GetMappedRangeValueClamped(FVector2D(0, GetCharacterMovement()->MaxWalkSpeed), FVector2D(50, 75), LocalVelocity.Size());
+	LocalColor = LocalVelocityZero ? FColor(0.25f,0.0f,0.25f) : LocalVelocity;*/
+	// DrawDebugDirectionalArrow(GetWorld(),LineStart,LineEnd,60,)
+	// GetWorld()->SpawnActor()
 }
 
 void ACharacter_ZMJ::SetViewMode(EViewMode_ZMJ NewViewMode)
 {
 	if (NewViewMode != ViewMode)
 	{
-		ViewMode = NewViewMode;
 		OnViewModeChanged(NewViewMode);
 	}
-	
 }
 
 void ACharacter_ZMJ::SetGait(EGait_ZMJ NewGait)
 {
 	if (NewGait != Gait)
 	{
-		Gait = NewGait;
 		OnGaitChanged(NewGait);
 	}
 }
@@ -408,10 +618,14 @@ void ACharacter_ZMJ::SetRotationMode(ERotationMode_ZMJ NewRotationMode)
 {
 	if (NewRotationMode != RotationMode)
 	{
-		RotationMode = NewRotationMode;
 		OnRotationModeChanged(NewRotationMode);
 	}
-	
 }
 
-
+void ACharacter_ZMJ::SetMovementState(EMovementState_ZMJ NewMovementState)
+{
+	if (MovementState != NewMovementState)
+	{
+		OnMovementStateChanged(NewMovementState);
+	}
+}
