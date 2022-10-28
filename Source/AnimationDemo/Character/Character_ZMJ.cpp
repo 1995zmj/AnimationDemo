@@ -63,88 +63,12 @@ void ACharacter_ZMJ::OnBeginPlay()
 	SetMovementModel();
 }
 
-void ACharacter_ZMJ::OnGaitChanged(EGait_ZMJ NewActualGait)
-{
-	Gait = NewActualGait;
-}
-
-void ACharacter_ZMJ::OnRotationModeChanged(ERotationMode_ZMJ NewRotaionMode)
-{
-	RotationMode = NewRotaionMode;
-	if (RotationMode == ERotationMode_ZMJ::VelocityDirection)
-	{
-		if (ViewMode == EViewMode_ZMJ::FirstPerson)
-		{
-			SetViewMode(EViewMode_ZMJ::ThirdPerson);
-		}
-	}
-}
-
-void ACharacter_ZMJ::OnViewModeChanged(EViewMode_ZMJ NewViewMode)
-{
-	ViewMode = NewViewMode;
-	switch (ViewMode)
-	{
-	case ThirdPerson:
-		switch (RotationMode)
-		{
-		case VelocityDirection:
-			SetRotationMode(DesiredRotationMode);
-			break;
-		case LookingDirection:
-			SetRotationMode(DesiredRotationMode);
-			break;
-		case Aiming:
-			break;
-		default:
-			break;
-		}
-		break;
-	case FirstPerson:
-		switch (RotationMode)
-		{
-		case VelocityDirection:
-			SetRotationMode(ERotationMode_ZMJ::LookingDirection);
-			break;
-		case LookingDirection:
-			break;
-		case Aiming:
-			break;
-		default:
-			break;
-		}
-		break;
-	default:
-		break;
-	}
-}
-
 void ACharacter_ZMJ::SetMovementModel()
 {
 	// MovementModel.DataTable->GetTableData(MovementModel.RowName);
 	// MovementModel.GetRow<>()
 	FString ContextString;
 	MovementData = MovementModel.GetRow<FMovementSettings_ZMJ>(ContextString);
-}
-
-void ACharacter_ZMJ::SetViewMode(EViewMode_ZMJ NewViewMode)
-{
-	if (NewViewMode != ViewMode)
-	{
-		ViewMode = NewViewMode;
-		OnViewModeChanged(NewViewMode);
-	}
-	
-}
-
-void ACharacter_ZMJ::SetRotationMode(ERotationMode_ZMJ NewRotationMode)
-{
-	if (NewRotationMode != RotationMode)
-	{
-		RotationMode = NewRotationMode;
-		OnRotationModeChanged(NewRotationMode);
-	}
-	
 }
 
 

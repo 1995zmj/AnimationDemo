@@ -23,52 +23,12 @@
 // 	TMap<FName, FTransRule> CurrState_Mapping_TransRule;
 // };
 
-UENUM(BlueprintType)
-enum EGait_ZMJ
+UENUM()
+enum EMyEnum
 {
-	Walking,
-	Runing,
-	Sprinting,
+	None,
+	Grounded,
+	InAir,
+	Mantling,
+	Ragdoll,
 };
-
-UENUM(BlueprintType)
-enum ERotationMode_ZMJ
-{
-	VelocityDirection,
-	LookingDirection,
-	Aiming,
-};
-
-UENUM(BlueprintType)
-enum EViewMode_ZMJ
-{
-	ThirdPerson,
-	FirstPerson,
-};
-
-// 有很多动作的覆盖姿势
-UENUM(BlueprintType)
-enum EOverlayState_ZMJ
-{
-	Default,
-	Masculine,
-	Feminine,
-	Injured,
-	Rifle,
-	Pistol 1H,
-	Pistol 2H,
-	Bow,
-	Torch,
-	Binoculars,
-	Box,
-	Barrel,
-};
-
-UENUM(BlueprintType)
-enum EStance_ZMJ
-{
-	Standing,
-	Crouching,
-};
-
-
