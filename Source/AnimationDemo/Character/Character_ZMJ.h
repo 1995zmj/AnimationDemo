@@ -5,14 +5,12 @@
 #include "CoreMinimal.h"
 #include "CharacterStruct_ZMJ.h"
 #include "CharacterEnum_ZMJ.h"
-#include "AnimationDemo/MyActor.h"
-#include "AnimationDemo/MyCharacter.h"
-#include "Engine/DataTable.h"
+#include "CharacterInformationInterface.h"
 #include "GameFramework/Character.h"
 #include "Character_ZMJ.generated.h"
 
 UCLASS()
-class ANIMATIONDEMO_API ACharacter_ZMJ : public ACharacter
+class ANIMATIONDEMO_API ACharacter_ZMJ : public ACharacter, public ICharacterInformationInterface
 {
 	GENERATED_BODY()
 
@@ -55,6 +53,8 @@ public:
 	FVector CalculateAcceleration();
 	// StatChanges
 	void OnBeginPlay();
+	UFUNCTION()
+	void OnMovementModeChangedDDelegateEvent(ACharacter* Character, EMovementMode PrevMovementMode, uint8 PreviousCustomMode);
 	void OnCharacterMovementModeChanged(EMovementMode PrevMovementMode, EMovementMode NewMovementMode, uint8 PrevCustomMode, uint8 NewCustomMode);
 	void OnMovementStateChanged(EMovementState_ZMJ NewMovementState);
 	void OnGaitChanged(EGait_ZMJ NewActualGait);
@@ -84,18 +84,24 @@ public:
 	void SetGait(EGait_ZMJ NewGait);
 	void SetRotationMode(ERotationMode_ZMJ NewRotationMode);
 	void SetMovementState(EMovementState_ZMJ NewMovementState);
+
+	// CharacterInformation
+	UFUNCTION(BlueprintCallable)
+	virtual bool GetEssentialValues(FCharacterInformation_ZMJ& OutCharacterInformation) override;
+	virtual bool GetCurrentStates(FCharacterStates_ZMJ& OutCharacterStates) override;
 public:
 	// References
 	UAnimInstance* MainAnimInstance;
 	// Input
 	EGait_ZMJ DesiredGait;
-	ERotationMode_ZMJ DesiredRotationMode;
+	ERotationMode_ZMJ DesiredRotationMode; 
 	EStance_ZMJ DesiredStance;
 	UPROPERTY(EditAnywhere,BlueprintReadWrite)
 	float LookUpRate;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float LookRightRate;
-	//EssentialInformation
+	// EssentialInformation
+	// 真实的加速度
 	FVector Acceleration;
 	bool IsMoving;
 	bool HasMovementInput;
@@ -108,6 +114,7 @@ public:
 	float AimYawRate;
 	// StateValues
 	EMovementState_ZMJ MovementState;
+	EMovementState_ZMJ PrevMovementState;
 	EMovementAction_ZMJ MovementAction;
 	ERotationMode_ZMJ RotationMode;
 	EGait_ZMJ Gait;

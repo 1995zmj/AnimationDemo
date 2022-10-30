@@ -3,8 +3,6 @@
 
 #include "PlayerCameraManager_ZMJ.h"
 
-#include "Kismet/KismetMathLibrary.h"
-
 APlayerCameraManager_ZMJ::APlayerCameraManager_ZMJ(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
@@ -83,9 +81,9 @@ void APlayerCameraManager_ZMJ::CustomCameraBehavior(FTViewTarget& OutVT, float D
 	PivotLocation = (SmoothedPivotTarget.GetLocation() + Offset);
 
 	//计算相机的实际位置
-	ForwardVector = UKismetMathLibrary::GetForwardVector(TargetCameraRotation);
-	RightVector = UKismetMathLibrary::GetRightVector(TargetCameraRotation);
-	UpVector = UKismetMathLibrary::GetUpVector(TargetCameraRotation);
+	ForwardVector = TargetCameraRotation.Vector();
+	RightVector = FRotationMatrix(TargetCameraRotation).GetScaledAxis(EAxis::Y);
+	UpVector = FRotationMatrix(TargetCameraRotation).GetScaledAxis(EAxis::Z);
 	auto CameraOffset_X = GetCameraBehaviorParam(FName("CameraOffset_X"));
 	auto CameraOffset_Y = GetCameraBehaviorParam(FName("CameraOffset_Y"));
 	auto CameraOffset_Z = GetCameraBehaviorParam(FName("CameraOffset_Z"));

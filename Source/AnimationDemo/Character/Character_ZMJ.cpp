@@ -14,7 +14,8 @@ ACharacter_ZMJ::ACharacter_ZMJ()
  	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
-	DesiredGait = EGait_ZMJ::Walking;
+	// 需要确定的预置
+	DesiredGait = EGait_ZMJ::Runing;
 	DesiredRotationMode = ERotationMode_ZMJ::LookingDirection;
 	ViewMode = EViewMode_ZMJ::ThirdPerson;
 	OverlayState =EOverlayState_ZMJ::Default;
@@ -24,6 +25,7 @@ ACharacter_ZMJ::ACharacter_ZMJ()
 	LookRightRate = 1.25;
 
 	PreviousVelocity = FVector::ZeroVector;
+	MovementModeChangedDelegate.AddDynamic(this, &ACharacter_ZMJ::OnMovementModeChangedDDelegateEvent);
 }
 
 // Called when the game starts or when spawned
@@ -32,7 +34,6 @@ void ACharacter_ZMJ::BeginPlay()
 	Super::BeginPlay();
 	OnBeginPlay();
 	
-	MovementModeChangedDelegate.AddDynamic(this, &ACharacter_ZMJ::OnMovementModeChange);
 }
 
 // Called every frame
@@ -121,7 +122,9 @@ void ACharacter_ZMJ::PlayerMovementInput(bool IsForwardAxis, float AxisValue)
 		}
 		else
 		{
-			AddMovementInput(GetControlRightVector(),FixDiagonalGamepadValues(AxisValue));
+			auto LocalWorldDirection = GetControlRightVector();
+			auto ScaleValue = FixDiagonalGamepadValues(AxisValue);
+			AddMovementInput(LocalWorldDirection,ScaleValue);
 		}
 		break;
 	}
@@ -131,7 +134,7 @@ void ACharacter_ZMJ::PlayerMovementInput(bool IsForwardAxis, float AxisValue)
 float ACharacter_ZMJ::FixDiagonalGamepadValues(float AxisValue)
 {
 	auto t = FMath::GetMappedRangeValueClamped(FVector2D(0.0f, 0.6f), FVector2D(1.0f, 1.2f), FMath::Abs(AxisValue));
-	return FMath::Clamp(t,-1.0f,1.0f);
+	return FMath::Clamp(t * AxisValue,-1.0f,1.0f);
 }
 
 // 这些值表示胶囊的移动方式以及它想要移动的方式，因此对于任何数据驱动的动画系统都是必不可少的。它们也在整个系统中用于各种功能，所以我发现在一个地方管理它们是最容易的。
@@ -217,6 +220,12 @@ void ACharacter_ZMJ::OnBeginPlay()
 	LastVelocityRotation = TargetRotation;
 	LastMovementInputRotation = TargetRotation;
 	
+}
+
+void ACharacter_ZMJ::OnMovementModeChangedDDelegateEvent(ACharacter* Character, EMovementMode PrevMovementMode,
+	uint8 PreviousCustomMode)
+{
+	OnCharacterMovementModeChanged(PrevMovementMode,GetCharacterMovement()->MovementMode,PrevMovementMode,GetCharacterMovement()->CustomMovementMode);
 }
 
 // 使用角色移动模式更改设置移动状态为正确的值。这允许你拥有一组自定义的移动状态，但仍然使用默认角色移动组件的功能。
@@ -341,6 +350,8 @@ void ACharacter_ZMJ::UpdateDynamicMovementSetting(EGait_ZMJ AllowedGait)
 		localSpeed = CurrentMovementSettings.SprintSpeed;
 		break;
 	}
+	// UE_LOG(LogTemp, Warning, TEXT("current Gait : %s"),*StaticEnum<EGait_ZMJ>()->GetNameStringByValue((int8)AllowedGait));
+
 	TempCharacterMovement->MaxWalkSpeed = localSpeed;
 	TempCharacterMovement->MaxWalkSpeedCrouched = localSpeed;
 
@@ -480,24 +491,28 @@ void ACharacter_ZMJ::UpdateGroudedRotation()
 	case  EMovementAction_ZMJ::None:
 		if (CanUpdateMovingRotation())
 		{
+			auto LocalRotator = FRotator::ZeroRotator;
 			switch (RotationMode)
 			{
 			case ERotationMode_ZMJ::VelocityDirection:
-				SmoothCharacterRotation(FRotator(0.0f,0.0f,LastVelocityRotation.Yaw),800,CalculateGroundedRotationRate());
+				LocalRotator.Yaw = LastVelocityRotation.Yaw;
+				SmoothCharacterRotation(LocalRotator,800,CalculateGroundedRotationRate());
 				break;
 			case ERotationMode_ZMJ::LookingDirection:
 				if (Gait == EGait_ZMJ::Sprinting)
 				{
-					SmoothCharacterRotation(FRotator(0.0f,0.0f,LastVelocityRotation.Yaw),500,CalculateGroundedRotationRate());
+					LocalRotator.Yaw = LastVelocityRotation.Yaw;
+					SmoothCharacterRotation(LocalRotator,500,CalculateGroundedRotationRate());
 				}
 				else
 				{
-					auto LocalYaw = GetControlRotation().Yaw + GetAnimCurveValue(FName("YawOffset"));
-					SmoothCharacterRotation(FRotator(0.0f,0.0f,LocalYaw),500,CalculateGroundedRotationRate());
+					LocalRotator.Yaw = GetControlRotation().Yaw + GetAnimCurveValue(FName("YawOffset"));
+					SmoothCharacterRotation(LocalRotator,500,CalculateGroundedRotationRate());
 				}
 				break;
 			case ERotationMode_ZMJ::Aiming:
-				SmoothCharacterRotation(FRotator(0.0f,0.0f,GetControlRotation().Yaw),1000,20);
+				LocalRotator.Yaw = GetControlRotation().Yaw;
+				SmoothCharacterRotation(LocalRotator,1000,20);
 				break;
 			}
 		}
@@ -535,7 +550,7 @@ void ACharacter_ZMJ::SmoothCharacterRotation(FRotator Target, const float Target
 
 	// 第二次过渡 (可能是为了第三人称服务的
 	// )
-	auto LocalRotation = FMath::RInterpConstantTo(GetActorRotation(),TargetRotation,LocalDelta,ActorInterpSpeed);
+	auto LocalRotation = FMath::RInterpTo(GetActorRotation(),TargetRotation,LocalDelta,ActorInterpSpeed);
 
 	SetActorRotation(LocalRotation);
 }
@@ -560,7 +575,9 @@ void ACharacter_ZMJ::LimitRotation(float AimYawMin, float AimYawMax, float Inter
 			LocalYaw = LocalControlRotation.Yaw + AimYawMax;
 		}
 
-		SmoothCharacterRotation(FRotator(0.0f,0.0f,LocalYaw),0.0f,InterpSpeed);
+		auto LocalRotator = FRotator::ZeroRotator;
+		LocalRotator.Yaw = LocalYaw;
+		SmoothCharacterRotation(LocalRotator,0.0f,InterpSpeed);
 	}
 }
 
@@ -628,4 +645,32 @@ void ACharacter_ZMJ::SetMovementState(EMovementState_ZMJ NewMovementState)
 	{
 		OnMovementStateChanged(NewMovementState);
 	}
+}
+
+bool ACharacter_ZMJ::GetEssentialValues(FCharacterInformation_ZMJ& OutCharacterInformation)
+{
+	OutCharacterInformation.Velocity			= GetVelocity();
+	OutCharacterInformation.Acceleration		= Acceleration;
+	OutCharacterInformation.MovementInput		= GetCharacterMovement()->GetCurrentAcceleration();
+	OutCharacterInformation.IsMoving			= IsMoving;
+	OutCharacterInformation.HasMovementInput	= HasMovementInput;
+	OutCharacterInformation.Speed				= Speed;
+	OutCharacterInformation.MovementInputAmount	= MovementInputAmount;
+	OutCharacterInformation.AimingRotation		= GetControlRotation();
+	OutCharacterInformation.AimYawRate			= AimYawRate;
+	return true;
+}
+
+bool ACharacter_ZMJ::GetCurrentStates(FCharacterStates_ZMJ& OutCharacterStates)
+{
+	// OutCharacterStates.PawnMovementMode		= GetCharacterMovement()->MovementMode;
+	// OutCharacterStates.MovementState		= MovementState;
+	// OutCharacterStates.PrevMovementState	= PrevMovementState;
+	// OutCharacterStates.MovementAction		= MovementAction;
+	// OutCharacterStates.RotationMode			= RotationMode;
+	// OutCharacterStates.ActualGait			= Gait;
+	// OutCharacterStates.ActualStance			= Stance;
+	// OutCharacterStates.ViewMode				= ViewMode;
+	// OutCharacterStates.OverlaySate			= OverlayState;
+	return  true;
 }
