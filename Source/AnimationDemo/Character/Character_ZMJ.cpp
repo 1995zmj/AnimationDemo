@@ -7,6 +7,7 @@
 #include "K2Node_GetDataTableRow.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "VisualLogger/VisualLogger.h"
 
 // Sets default values
 ACharacter_ZMJ::ACharacter_ZMJ()
@@ -49,8 +50,15 @@ void ACharacter_ZMJ::Tick(float DeltaTime)
 		UpdateGroudedRotation();
 		break;
 	}
+	// FCharacterInformation_ZMJ OutCharacterInformation;
+	// GetEssentialValues(OutCharacterInformation);
+	// UE_VLOG(this, "ACharacter_ZMJ", Verbose,
+	// TEXT("Name (%s)/n key Velocity (%s)/n key Speed (%f)/n"),
+	// *GetName(),
+	// *OutCharacterInformation.Velocity.ToString(),
+	// OutCharacterInformation.Speed
+	// );
 
-	
 }
 
 // Called to bind functionality to input
@@ -150,6 +158,7 @@ void ACharacter_ZMJ::SetEssentialValues()
 	Speed = Velocity.Size();
 	// UE_LOG(LogTemp, Warning, TEXT("speed : %f"),Speed);
 
+	// 有速度就是在移动
 	IsMoving = Speed > 1.0f;
 	if (IsMoving)
 	{
@@ -164,6 +173,7 @@ void ACharacter_ZMJ::SetEssentialValues()
 	float AccelerationLength = TempAcceleration.Size();
 	float MaxAcceleration = CharacterMovementRef->GetMaxAcceleration();
 	MovementInputAmount = AccelerationLength/MaxAcceleration;
+	// 这里指的是输入量，没有输入的时候会缓慢停止，有个过渡的，还是在移动的
 	HasMovementInput = MovementInputAmount > 0.0;
 	if (HasMovementInput)
 	{
@@ -253,9 +263,9 @@ void ACharacter_ZMJ::OnGaitChanged(EGait_ZMJ NewActualGait)
 	Gait = NewActualGait;
 }
 
-void ACharacter_ZMJ::OnRotationModeChanged(ERotationMode_ZMJ NewRotaionMode)
+void ACharacter_ZMJ::OnRotationModeChanged(ERotationMode_ZMJ NewRotationMode)
 {
-	RotationMode = NewRotaionMode;
+	RotationMode = NewRotationMode;
 	if (RotationMode == ERotationMode_ZMJ::VelocityDirection)
 	{
 		if (ViewMode == EViewMode_ZMJ::FirstPerson)
@@ -663,14 +673,14 @@ bool ACharacter_ZMJ::GetEssentialValues(FCharacterInformation_ZMJ& OutCharacterI
 
 bool ACharacter_ZMJ::GetCurrentStates(FCharacterStates_ZMJ& OutCharacterStates)
 {
-	// OutCharacterStates.PawnMovementMode		= GetCharacterMovement()->MovementMode;
-	// OutCharacterStates.MovementState		= MovementState;
-	// OutCharacterStates.PrevMovementState	= PrevMovementState;
-	// OutCharacterStates.MovementAction		= MovementAction;
-	// OutCharacterStates.RotationMode			= RotationMode;
-	// OutCharacterStates.ActualGait			= Gait;
-	// OutCharacterStates.ActualStance			= Stance;
-	// OutCharacterStates.ViewMode				= ViewMode;
-	// OutCharacterStates.OverlaySate			= OverlayState;
+	OutCharacterStates.PawnMovementMode		= GetCharacterMovement()->MovementMode;
+	OutCharacterStates.MovementState		= MovementState;
+	OutCharacterStates.PrevMovementState	= PrevMovementState;
+	OutCharacterStates.MovementAction		= MovementAction;
+	OutCharacterStates.RotationMode			= RotationMode;
+	OutCharacterStates.ActualGait			= Gait;
+	OutCharacterStates.ActualStance			= Stance;
+	OutCharacterStates.ViewMode				= ViewMode;
+	OutCharacterStates.OverlaySate			= OverlayState;
 	return  true;
 }

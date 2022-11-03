@@ -58,7 +58,7 @@ public:
 	void OnCharacterMovementModeChanged(EMovementMode PrevMovementMode, EMovementMode NewMovementMode, uint8 PrevCustomMode, uint8 NewCustomMode);
 	void OnMovementStateChanged(EMovementState_ZMJ NewMovementState);
 	void OnGaitChanged(EGait_ZMJ NewActualGait);
-	void OnRotationModeChanged(ERotationMode_ZMJ NewRotaionMode);
+	void OnRotationModeChanged(ERotationMode_ZMJ NewRotationMode);
 	void OnViewModeChanged(EViewMode_ZMJ NewViewMode);
 	void OnOverlayStateChanged(EOverlayState_ZMJ NewOverlayState);
 
@@ -91,6 +91,7 @@ public:
 	virtual bool GetCurrentStates(FCharacterStates_ZMJ& OutCharacterStates) override;
 public:
 	// References
+	UPROPERTY()
 	UAnimInstance* MainAnimInstance;
 	// Input
 	EGait_ZMJ DesiredGait;
