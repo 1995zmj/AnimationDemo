@@ -198,14 +198,14 @@ void UAnimInstance_Character::UpdateRotationValues()
 	);
 	
 	// 设置偏航偏移量。这些值影响动画中的“YawOffset”曲线，用于偏移字符的旋转，以获得更自然的移动。曲线允许对每个运动方向的偏移行为进行精细控制。
-	// auto LocalRotation = Velocity.ToOrientationRotator() - Character->GetControlRotation();
-	// LocalRotation.Normalize();
-	// auto FB = YawOffset_FB->GetVectorValue(LocalRotation.Yaw);
-	// auto LR = YawOffset_LR->GetVectorValue(LocalRotation.Yaw);
-	// FYaw = FB.X;
-	// BYaw = FB.Y;
-	// LYaw = LR.X;
-	// RYaw = LR.Y;
+	auto LocalRotation = Velocity.ToOrientationRotator() - Character->GetControlRotation();
+	LocalRotation.Normalize();
+	auto FB = GetVectorValue(YawOffset_FB,LocalRotation.Yaw);
+	auto LR = GetVectorValue(YawOffset_LR,LocalRotation.Yaw);
+	FYaw = FB.X;
+	BYaw = FB.Y;
+	LYaw = LR.X;
+	RYaw = LR.Y;
 }
 
 bool UAnimInstance_Character::ShouldMoveCheck()
@@ -378,4 +378,14 @@ float UAnimInstance_Character::GetFloatValue(UCurveFloat* CurveFloat, float InTi
 		return CurveFloat->GetFloatValue(InTime);
 	}
 	return 0.0f;
+}
+
+FVector UAnimInstance_Character::GetVectorValue(UCurveVector* CurveVector, float InTime)
+{
+
+	if (IsValid(CurveVector))
+	{
+		return CurveVector->GetVectorValue(InTime);
+	}
+	return FVector::ZeroVector;
 }

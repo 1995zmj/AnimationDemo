@@ -54,6 +54,7 @@ public:
 	float GetAnimCurve_Compact();
 	float GetAnimCurve_Clamped(FName Name, float Bias, float ClmapMin, float ClampMax);
 	float GetFloatValue(class UCurveFloat* CurveFloat,float InTime);
+	FVector GetVectorValue(class UCurveVector* CurveVector,float InTime);
 	
 	// References
 	UPROPERTY()
