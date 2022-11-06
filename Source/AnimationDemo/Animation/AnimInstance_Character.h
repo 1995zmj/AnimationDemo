@@ -40,6 +40,8 @@ public:
 	FVector CalculateRelativeAccelerationAmount();
 	float CalculateWalkRunBlend();
 	float CalculateStrideBlend();
+	float CalculateStandingPlayRate();
+
 	// Rotation
 	EMovementDirection_ZMJ CalculateMovementDirection();
 	EMovementDirection_ZMJ CalculateQuadrant(EMovementDirection_ZMJ Current, float FR_Threshold, float FL_Threshold, float BR_Threshold, float BL_Threshold,
@@ -47,7 +49,7 @@ public:
 	bool AngleInRange(float Angle, float MinAngel, float MaxAngel, float Buffer, bool IncreaseBuffer);
 	// Interpolation
 	FVelocityBlend_ZMJ InterpVelocityBlend(FVelocityBlend_ZMJ Current, FVelocityBlend_ZMJ Target, float InterpSpeed, float DeltaTime);
-	// float InterpLeanAmount();
+	FLeanAmount_ZMJ InterpLeanAmount(FLeanAmount_ZMJ Current, FLeanAmount_ZMJ Target, float InterpSpeed, float DeltaTime);
 
 
 	// Macros
@@ -105,6 +107,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	EHipsDirection_ZMJ TrackedHipsDirection;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FVector RelativeAccelerationAmount;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool ShouldMove;
 	float DiagonalScaleAmount;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -115,6 +119,8 @@ public:
 	float StrdeBlend;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVelocityBlend_ZMJ VelocityBlend;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FLeanAmount_ZMJ LeanAmount;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float FYaw;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -149,7 +155,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	class UCurveVector* YawOffset_LR;
 	// Config
+	float AnimatedWalkSpeed;
+	float AnimatedRunSpeed;
+	float AnimatedSprintSpeed;
 	float SmoothedAimingRotationInterpSpeed;
 	float VelocityBlendInterpSpeed;
+	float GroundedLeanInterpSpeed;
 };
 

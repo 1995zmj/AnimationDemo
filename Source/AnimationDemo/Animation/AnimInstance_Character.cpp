@@ -22,6 +22,9 @@ void UAnimInstance_Character::OnInitializeAnimation()
 	// 一些配置参数
 	SmoothedAimingRotationInterpSpeed = 10.0f;
 	VelocityBlendInterpSpeed = 12.0f;
+	GroundedLeanInterpSpeed = 4.0f;
+	AnimatedWalkSpeed = 150;
+	AnimatedRunSpeed = 350;
 }
 
 void UAnimInstance_Character::OnUpdateAnimation(float DeltaTimeX)
@@ -179,11 +182,21 @@ void UAnimInstance_Character::UpdateMovementValues()
 	// 设置对角刻度量。
 	// DiagonalScaleAmount = CalculateDiagonalScaleAmount();
 
+	RelativeAccelerationAmount = CalculateRelativeAccelerationAmount();
+	FLeanAmount_ZMJ LocalLeanAmount;
+	LocalLeanAmount.FB = RelativeAccelerationAmount.X;
+	LocalLeanAmount.LR = RelativeAccelerationAmount.Y;
+	LeanAmount = InterpLeanAmount(LeanAmount,LocalLeanAmount,GroundedLeanInterpSpeed,MyDeltaTimeX);
 
+	// 设置相对加速度量并插入倾斜量。
+	RelativeAccelerationAmount = CalculateRelativeAccelerationAmount();
+	
+	
 	WalkRunBlend = CalculateWalkRunBlend();
 	// 通过速度确定步伐
 	StrdeBlend = CalculateStrideBlend();
-
+	
+	StandingPlayRate = CalculateStandingPlayRate();
 }
 
 void UAnimInstance_Character::UpdateRotationValues()
@@ -286,6 +299,15 @@ float UAnimInstance_Character::CalculateStrideBlend()
 	return FMath::Lerp(FMath::Lerp(A, B, Alpha), GetFloatValue(StrideBlend_C_Walk,Speed), GetCurveValue(FName("BasePose_CLF")));
 }
 
+float UAnimInstance_Character::CalculateStandingPlayRate()
+{
+	auto localRelativeSpeed = FMath::Lerp(Speed / AnimatedWalkSpeed,Speed / AnimatedRunSpeed,GetAnimCurve_Clamped(FName("Weight_Gait"),-1.0,0.0f,1.0f));
+
+	// TODO 这里之后要加入冲刺相关的
+	
+	return FMath::Clamp((localRelativeSpeed / StrdeBlend / GetOwningComponent()->GetComponentScale().X),0.0f,3.0f);
+}
+
 // 计算运动方向。这个值表示角色在看方向/瞄准旋转模式中相对于相机移动的方向，并在循环混合动画图层中使用，以混合到适当的方向状态。
 EMovementDirection_ZMJ UAnimInstance_Character::CalculateMovementDirection()
 {
@@ -363,7 +385,16 @@ FVelocityBlend_ZMJ UAnimInstance_Character::InterpVelocityBlend(FVelocityBlend_Z
 	Result.B = FMath::FInterpTo(Current.B,Target.B,DeltaTime,InterpSpeed);
 	Result.L = FMath::FInterpTo(Current.L,Target.L,DeltaTime,InterpSpeed);
 	Result.R = FMath::FInterpTo(Current.R,Target.R,DeltaTime,InterpSpeed);
-	return  Result;
+	return Result;
+}
+
+FLeanAmount_ZMJ UAnimInstance_Character::InterpLeanAmount(FLeanAmount_ZMJ Current, FLeanAmount_ZMJ Target,
+	float InterpSpeed, float DeltaTime)
+{
+	FLeanAmount_ZMJ Result;
+	Result.LR = FMath::FInterpTo(Current.LR,Target.LR,DeltaTime,InterpSpeed);
+	Result.FB = FMath::FInterpTo(Current.FB,Target.FB,DeltaTime,InterpSpeed);
+	return Result;
 }
 
 float UAnimInstance_Character::GetAnimCurve_Clamped(FName Name, float Bias, float ClmapMin, float ClampMax)
