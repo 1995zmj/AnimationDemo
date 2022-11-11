@@ -34,6 +34,13 @@ public:
 	void UpdateRotationValues();
 	// Grounded
 	bool ShouldMoveCheck();
+	bool CanTurnInPalce();
+	bool CanRotateInPlace();
+	bool CanDynamicTransition();
+	void TurnInPlace(FRotator TargetRotation, float PlayRateScale, float StartTime, bool OverrideCurrent);
+	void TurnInPlaceCheck();
+	void RotateInPlaceCheck();
+	void DynamicTransitionCheck();
 	// Movement
 	FVelocityBlend_ZMJ CalculateVelocityBlend();
 	float CalculateDiagonalScaleAmount();
@@ -57,6 +64,8 @@ public:
 	float GetAnimCurve_Clamped(FName Name, float Bias, float ClmapMin, float ClampMax);
 	float GetFloatValue(class UCurveFloat* CurveFloat,float InTime);
 	FVector GetVectorValue(class UCurveVector* CurveVector,float InTime);
+	float GetDistanceBetweenTwoSocketsAndMapRange(const USkeletalMeshComponent* Component, const FName SocketOrBoneNameA, ERelativeTransformSpace SocketSpaceA, const FName SocketOrBoneNameB, ERelativeTransformSpace SocketSpaceB,
+		bool bRemapRange = false, float InRangeMin = 0.0f, float InRangeMax = 0.0f, float OutRangeMin = 0.0f, float OutRangeMax = 0.0f);
 	
 	// References
 	UPROPERTY()
@@ -110,6 +119,16 @@ public:
 	FVector RelativeAccelerationAmount;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	bool ShouldMove;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool Rotate_L;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool Rotate_R;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool Pivot;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float RotateRate;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    float RotationScale;
 	float DiagonalScaleAmount;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float WalkRunBlend;
@@ -141,6 +160,36 @@ public:
 	float LeftYawTime;
 	float RightYawTime;
 
+	// TurnInPlace
+	float TurnCheckMinAngle;
+	float Turn180Threshold;
+	float AimYawRateLimit;
+	float ElapsedDelayTime;
+	float MinAngleDelay;
+	float MaxAngleDelay;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FTurnInPlace_Asset_ZMJ N_TurnIP_L90;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FTurnInPlace_Asset_ZMJ N_TurnIP_R90;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FTurnInPlace_Asset_ZMJ N_TurnIP_L180;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FTurnInPlace_Asset_ZMJ N_TurnIP_R180;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FTurnInPlace_Asset_ZMJ CLF_TurnIP_L90;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FTurnInPlace_Asset_ZMJ CLF_TurnIP_R90;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FTurnInPlace_Asset_ZMJ CLF_TurnIP_L180;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FTurnInPlace_Asset_ZMJ CLF_TurnIP_R180;
+	// RotateInPlace
+	float RotateMinThreshold;
+	float RotateMaxThreshold;
+	float AimYawRateMinRange;
+	float AimYawRateMaxRange;
+	float MinPlayRate;
+	float MaxPlayRate;
 	// BlendCurves
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	class UCurveFloat* DiagonalScaleAmountCurve;
@@ -161,5 +210,7 @@ public:
 	float SmoothedAimingRotationInterpSpeed;
 	float VelocityBlendInterpSpeed;
 	float GroundedLeanInterpSpeed;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float TriggerPivotSpeedLimit;
 };
 

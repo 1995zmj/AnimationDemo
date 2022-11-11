@@ -25,6 +25,24 @@ void UAnimInstance_Character::OnInitializeAnimation()
 	GroundedLeanInterpSpeed = 4.0f;
 	AnimatedWalkSpeed = 150;
 	AnimatedRunSpeed = 350;
+	TriggerPivotSpeedLimit = 200;
+
+
+	//
+	TurnCheckMinAngle = 45.0f;
+	AimYawRateLimit = 50.0f;
+	MinAngleDelay = 0.75f;
+	MaxAngleDelay = 0.0f;
+	// 原地转头旋转
+	RotateMinThreshold = -50.0f;
+	RotateMaxThreshold = 50.0f;
+	AimYawRateMinRange = 90.0f;
+	AimYawRateMaxRange = 270.0f;
+	MinPlayRate = 1.15f;
+	MaxPlayRate = 3.0f;
+
+	// 默认参数
+	ShouldMove = false;
 }
 
 void UAnimInstance_Character::OnUpdateAnimation(float DeltaTimeX)
@@ -42,35 +60,50 @@ void UAnimInstance_Character::OnUpdateAnimation(float DeltaTimeX)
 	UpdateFootIK();
 
 
+	
 	UE_VLOG(this, "character", Verbose,
-	TEXT("Name (%s)/n key Velocity (%s)/n key Speed (%f)/n"),
+	TEXT("Name (%s)\n key Velocity (%s)\n  key Speed (%f)\n key Acceleration (%s)\n"),
 	*GetName(),
 	*Velocity.ToString(),
-	Speed
+	Speed,
+	*Acceleration.ToString()
 	);
 	switch (MovementState)
 	{
 	case EMovementState_ZMJ::Grounded:
 		auto LastShouldMove = ShouldMove;
 		ShouldMove = ShouldMoveCheck();
-		if (LastShouldMove == ShouldMove)
+		if (ShouldMove)
 		{
-			if (ShouldMove)
-			{
-				// 一直移动
-				UpdateMovementValues();
-				UpdateRotationValues();
-			}
-			else
-			{
-				// 一直停止
-			}
+			// 移动
+			UpdateMovementValues();
+			UpdateRotationValues();
 		}
 		else
+		{
+			// 停止
+			// 原地旋转功能
+			// if (CanRotateInPlace())
+			// {
+			// 	RotateInPlaceCheck();
+			// }
+			// else
+			// {
+			// 	Rotate_L = false;
+			// 	Rotate_R = false;
+			// }
+
+			// 
+				
+		}
+		if (LastShouldMove != ShouldMove)
 		{
 			if (ShouldMove)
 			{
 				// 开始移动
+				ElapsedDelayTime = 0.0f;
+				Rotate_L = false;
+				Rotate_R = false;
 			}
 			else
 			{
@@ -182,21 +215,25 @@ void UAnimInstance_Character::UpdateMovementValues()
 	// 设置对角刻度量。
 	// DiagonalScaleAmount = CalculateDiagonalScaleAmount();
 
+	// 设置相对加速度量并插入倾斜量。
 	RelativeAccelerationAmount = CalculateRelativeAccelerationAmount();
 	FLeanAmount_ZMJ LocalLeanAmount;
 	LocalLeanAmount.FB = RelativeAccelerationAmount.X;
 	LocalLeanAmount.LR = RelativeAccelerationAmount.Y;
 	LeanAmount = InterpLeanAmount(LeanAmount,LocalLeanAmount,GroundedLeanInterpSpeed,MyDeltaTimeX);
-
-	// 设置相对加速度量并插入倾斜量。
-	RelativeAccelerationAmount = CalculateRelativeAccelerationAmount();
-	
 	
 	WalkRunBlend = CalculateWalkRunBlend();
 	// 通过速度确定步伐
 	StrdeBlend = CalculateStrideBlend();
 	
 	StandingPlayRate = CalculateStandingPlayRate();
+	
+	UE_VLOG(this, "AnimInstace", Verbose,
+	TEXT("Name (%s)/n key LeanAmount FB(%f)LR(%f)"),
+	*GetName(),
+	LeanAmount.FB,
+	LeanAmount.LR
+	);
 }
 
 void UAnimInstance_Character::UpdateRotationValues()
@@ -224,6 +261,158 @@ void UAnimInstance_Character::UpdateRotationValues()
 bool UAnimInstance_Character::ShouldMoveCheck()
 {
 	return Speed > 150 || (IsMoving && HasMovementInput);
+}
+
+// 仅当角色以第三人称朝向摄影机并且“启用过渡”曲线已完全加权时，才执行“原地转弯”检查。Enable_Transition曲线在AnimBP的某些状态下进行修改，以便角色只能在这些状态下转动。
+bool UAnimInstance_Character::CanTurnInPalce()
+{
+	return RotationMode == ERotationMode_ZMJ::LookingDirection && ViewMode == EViewMode_ZMJ::ThirdPerson && GetCurveValue(FName("Enable_Transition")) > 0.99;
+}
+
+bool UAnimInstance_Character::CanRotateInPlace()
+{
+	return RotationMode == ERotationMode_ZMJ::Aiming || ViewMode == EViewMode_ZMJ::FirstPerson;
+}
+
+bool UAnimInstance_Character::CanDynamicTransition()
+{
+	return GetCurveValue(FName("Enable_Transition")) == 1.0f;
+}
+
+void UAnimInstance_Character::TurnInPlace(FRotator TargetRotation, float PlayRateScale, float StartTime, bool OverrideCurrent)
+{
+	// 步骤1：设置转角
+	FRotator Delta = TargetRotation -Character->GetActorRotation();
+	Delta.Normalize();
+	auto TurnAngle = Delta.Yaw;
+
+	// 步骤2：根据转弯角度和姿势选择转弯资源
+	auto TargetTurnAsset = N_TurnIP_L90;
+	if (FMath::Abs(TurnAngle) < Turn180Threshold)
+	{
+		if (TurnAngle < 0.0)
+		{
+			switch (ActualStance)
+			{
+			case EStance_ZMJ::Standing:
+				TargetTurnAsset = N_TurnIP_L90;
+				break;
+			case EStance_ZMJ::Crouching:
+				TargetTurnAsset = CLF_TurnIP_L90;
+				break;
+			}
+		}
+		else
+		{
+			switch (ActualStance)
+            {
+            case EStance_ZMJ::Standing:
+            	TargetTurnAsset = N_TurnIP_R90;
+            	break;
+            case EStance_ZMJ::Crouching:
+            	TargetTurnAsset = CLF_TurnIP_R90;
+            	break;
+            }
+		}
+	}
+	else
+	{
+		if (TurnAngle < 0.0)
+		{
+			switch (ActualStance)
+			{
+			case EStance_ZMJ::Standing:
+				TargetTurnAsset = N_TurnIP_L180;
+				break;
+			case EStance_ZMJ::Crouching:
+				TargetTurnAsset = CLF_TurnIP_L180;
+				break;
+			}
+		}
+		else
+		{
+			switch (ActualStance)
+			{
+			case EStance_ZMJ::Standing:
+				TargetTurnAsset = N_TurnIP_R180;
+				break;
+			case EStance_ZMJ::Crouching:
+				TargetTurnAsset = CLF_TurnIP_R180;
+				break;
+			}
+		}
+	}
+
+	// 步骤3:如果目标回合动画没有播放或设置为被覆盖，将回合动画作为动态蒙太奇播放。
+	if (OverrideCurrent || !IsPlayingSlotAnimation(TargetTurnAsset.Animation,TargetTurnAsset.SlotName))
+	{
+		PlaySlotAnimationAsDynamicMontage(TargetTurnAsset.Animation,TargetTurnAsset.SlotName,0.2,0.2,
+			TargetTurnAsset.PlayRate * PlayRateScale,1,0.0f,StartTime);
+	}
+
+	//  步骤4:调整旋转量(在动画中调整)以补偿转角(如果允许)和游戏率。
+	if (TargetTurnAsset.ScaleTurnAngle)
+	{
+		RotationScale = (TurnAngle / TargetTurnAsset.AnimatedAngle) * TargetTurnAsset.PlayRate * PlayRateScale;
+	}
+	else
+	{
+		RotationScale = TargetTurnAsset.PlayRate * PlayRateScale;
+	}
+}
+
+void UAnimInstance_Character::TurnInPlaceCheck()
+{
+	// 步骤1：检查瞄准角度是否超出转弯检查最小角度，以及瞄准偏航率是否低于瞄准偏航速率限制。如果是，则开始计算已用延迟时间。如果没有，则重置已用延迟时间。这确保了在转向到位之前，条件在持续一段时间内保持正确。
+
+	auto AbsAimingAngleX = FMath::Abs(AimingAngle.X);
+	if (AbsAimingAngleX > TurnCheckMinAngle && AimYawRate < AimYawRateLimit)
+	{
+		ElapsedDelayTime = ElapsedDelayTime + MyDeltaTimeX;
+		// 步骤2：检查经过的延迟时间是否超过设置的延迟（映射到转角范围）。如果是，则触发“原地转弯”。
+
+		auto LocalTemp = FMath::GetMappedRangeValueClamped(FVector2D(TurnCheckMinAngle, 180.0f), FVector2D(MinAngleDelay, MaxAngleDelay), AbsAimingAngleX);
+		if (ElapsedDelayTime > LocalTemp)
+		{
+			auto LocalRotation = FRotator::ZeroRotator;
+			LocalRotation.Yaw = AimingRotation.Yaw;
+			TurnInPlace(LocalRotation,1.0f,0.0f,false);
+		}
+	}
+	else
+	{
+		ElapsedDelayTime = 0.0f;
+	}
+}
+
+void UAnimInstance_Character::RotateInPlaceCheck()
+{
+	// Step 1: Check if the character should rotate left or right by checking if the Aiming Angle exceeds the threshold.
+	Rotate_L = AimingAngle.X < RotateMinThreshold;
+	Rotate_R = AimingAngle.X > RotateMaxThreshold;
+
+	// 步骤2：如果角色应该旋转，请将“旋转速率”设置为与“目标偏航速率”一起缩放。这使角色在更快地移动摄影机时旋转得更快。
+	if (Rotate_L || Rotate_R)
+	{
+		RotateRate = FMath::GetMappedRangeValueClamped(FVector2D(AimYawRateMinRange, AimYawRateMaxRange), FVector2D(MinPlayRate, MaxPlayRate), AimYawRate);
+	}
+}
+
+void UAnimInstance_Character::DynamicTransitionCheck()
+{
+	auto LocalComponent = GetOwningComponent();
+	float Distance = GetDistanceBetweenTwoSocketsAndMapRange(LocalComponent,FName("ik_foot_l"),RTS_Component,FName("VB foot_target_l"),RTS_Component);
+	if (Distance > 8.0f)
+	{
+		// DisplayDebug()
+	}
+
+	Distance = GetDistanceBetweenTwoSocketsAndMapRange(LocalComponent,FName("ik_foot_r"),RTS_Component,FName("VB foot_target_r"),RTS_Component);
+	if (Distance > 8.0f)
+	{
+		// DisplayDebug()
+	}
+
 }
 
 // 计算速度混合。这个值表示参与者在每个方向上的速度量(标准化使每个方向的对角线等于.5)，并在BlendMulti节点中使用，以产生比标准blendspace更好的方向混合。
@@ -269,7 +458,7 @@ float UAnimInstance_Character::CalculateDiagonalScaleAmount()
 FVector UAnimInstance_Character::CalculateRelativeAccelerationAmount()
 {
 	float LocalMaxAcceleration;
-	if (FVector::DotProduct(Acceleration, Velocity))
+	if (FVector::DotProduct(Acceleration, Velocity) > 0.0f)
 	{
 		// 加速
 		LocalMaxAcceleration = Character->GetCharacterMovement()->GetMaxAcceleration();
@@ -419,4 +608,26 @@ FVector UAnimInstance_Character::GetVectorValue(UCurveVector* CurveVector, float
 		return CurveVector->GetVectorValue(InTime);
 	}
 	return FVector::ZeroVector;
+}
+
+float UAnimInstance_Character::GetDistanceBetweenTwoSocketsAndMapRange(const USkeletalMeshComponent* Component, const FName SocketOrBoneNameA, ERelativeTransformSpace SocketSpaceA, const FName SocketOrBoneNameB, ERelativeTransformSpace SocketSpaceB, bool bRemapRange, float InRangeMin, float InRangeMax, float OutRangeMin, float OutRangeMax)
+{
+	if (Component && SocketOrBoneNameA != NAME_None && SocketOrBoneNameB != NAME_None)
+	{
+		FTransform SocketTransformA = Component->GetSocketTransform(SocketOrBoneNameA, SocketSpaceA);
+		FTransform SocketTransformB = Component->GetSocketTransform(SocketOrBoneNameB, SocketSpaceB);
+
+		float Distance = (SocketTransformB.GetLocation() - SocketTransformA.GetLocation()).Size();
+
+		if (bRemapRange)
+		{
+			return FMath::GetMappedRangeValueClamped(FVector2D(InRangeMin, InRangeMax), FVector2D(OutRangeMin, OutRangeMax), Distance);
+		}
+		else
+		{
+			return Distance;
+		}
+	}
+
+	return 0.f;
 }

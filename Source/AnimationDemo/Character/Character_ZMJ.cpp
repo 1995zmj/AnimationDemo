@@ -50,15 +50,8 @@ void ACharacter_ZMJ::Tick(float DeltaTime)
 		UpdateGroudedRotation();
 		break;
 	}
-	// FCharacterInformation_ZMJ OutCharacterInformation;
-	// GetEssentialValues(OutCharacterInformation);
-	// UE_VLOG(this, "ACharacter_ZMJ", Verbose,
-	// TEXT("Name (%s)/n key Velocity (%s)/n key Speed (%f)/n"),
-	// *GetName(),
-	// *OutCharacterInformation.Velocity.ToString(),
-	// OutCharacterInformation.Speed
-	// );
-
+	
+	CacheValues();
 }
 
 // Called to bind functionality to input
