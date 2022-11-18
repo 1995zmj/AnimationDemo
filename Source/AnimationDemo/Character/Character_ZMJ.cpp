@@ -27,6 +27,9 @@ ACharacter_ZMJ::ACharacter_ZMJ()
 
 	PreviousVelocity = FVector::ZeroVector;
 	MovementModeChangedDelegate.AddDynamic(this, &ACharacter_ZMJ::OnMovementModeChangedDDelegateEvent);
+
+
+	Stance = EStance_ZMJ::Standing;
 }
 
 // Called when the game starts or when spawned
@@ -64,6 +67,8 @@ void ACharacter_ZMJ::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 
 	PlayerInputComponent->BindAxis("LookLeft/Right", this, &ACharacter_ZMJ::LookRight);
 	PlayerInputComponent->BindAxis("LookUp/Down", this, &ACharacter_ZMJ::LookUp);
+
+	PlayerInputComponent->BindAction("StanceAction",IE_Pressed ,this, &ACharacter_ZMJ::StanceAction);
 }
 
 
@@ -85,6 +90,28 @@ void ACharacter_ZMJ::LookUp(float Value)
 void ACharacter_ZMJ::LookRight(float Value)
 {
 	AddControllerYawInput(Value * LookRightRate);
+}
+
+void ACharacter_ZMJ::StanceAction(FKey Key)
+{
+	if (MovementAction == EMovementAction_ZMJ::None)
+	{
+		switch (MovementState)
+		{
+		case EMovementState_ZMJ::Grounded:
+			if (Stance == EStance_ZMJ::Crouching)
+			{
+				Stance = EStance_ZMJ::Standing;
+				Crouch();
+			}
+			else
+			{
+				Stance = EStance_ZMJ::Crouching;
+				UnCrouch();
+			}
+			break;
+		}
+	}
 }
 
 FVector ACharacter_ZMJ::GetControlForwardVector()

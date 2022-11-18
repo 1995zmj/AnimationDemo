@@ -25,6 +25,7 @@ void UAnimInstance_Character::OnInitializeAnimation()
 	GroundedLeanInterpSpeed = 4.0f;
 	AnimatedWalkSpeed = 150;
 	AnimatedRunSpeed = 350;
+	AnimatedCrouchSpeed = 150;
 	TriggerPivotSpeedLimit = 200;
 
 
@@ -120,6 +121,12 @@ void UAnimInstance_Character::OnUpdateAnimation(float DeltaTimeX)
 	StrdeBlend,
 	WalkRunBlend
 	);
+}
+
+void UAnimInstance_Character::PlayTransition(FDynamicMontageParams_ZMJ Parameters)
+{
+	PlaySlotAnimationAsDynamicMontage(Parameters.Animation,FName("Grounded Slot"),
+		Parameters.BlendInTime,Parameters.BlendOutTime,Parameters.PlayRate,1,0.0f,Parameters.StartTime);
 }
 
 void UAnimInstance_Character::UpdateCharacterInfo()
@@ -227,7 +234,7 @@ void UAnimInstance_Character::UpdateMovementValues()
 	StrdeBlend = CalculateStrideBlend();
 	
 	StandingPlayRate = CalculateStandingPlayRate();
-	
+	CrouchingPlayRate = CalculateCrouchingPlayRate();
 	UE_VLOG(this, "AnimInstace", Verbose,
 	TEXT("Name (%s)/n key LeanAmount FB(%f)LR(%f)"),
 	*GetName(),
@@ -494,7 +501,12 @@ float UAnimInstance_Character::CalculateStandingPlayRate()
 
 	// TODO 这里之后要加入冲刺相关的
 	
-	return FMath::Clamp((localRelativeSpeed / StrdeBlend / GetOwningComponent()->GetComponentScale().X),0.0f,3.0f);
+	return FMath::Clamp((localRelativeSpeed / StrdeBlend / GetOwningComponent()->GetComponentScale().Z),0.0f,3.0f);
+}
+
+float UAnimInstance_Character::CalculateCrouchingPlayRate()
+{
+	return FMath::Clamp((Speed / AnimatedCrouchSpeed / StrdeBlend/ GetOwningComponent()->GetComponentScale().Z),0.0f,2.0f);
 }
 
 // 计算运动方向。这个值表示角色在看方向/瞄准旋转模式中相对于相机移动的方向，并在循环混合动画图层中使用，以混合到适当的方向状态。

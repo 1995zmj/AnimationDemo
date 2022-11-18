@@ -25,6 +25,10 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void OnUpdateAnimation(float DeltaTimeX);
 
+	// EventGraph
+	UFUNCTION(BlueprintCallable)
+	void PlayTransition(FDynamicMontageParams_ZMJ Parameters);
+
 	// UpdateValues
 	void UpdateCharacterInfo();
 	void UpdateAimingValues();
@@ -48,6 +52,7 @@ public:
 	float CalculateWalkRunBlend();
 	float CalculateStrideBlend();
 	float CalculateStandingPlayRate();
+	float CalculateCrouchingPlayRate();
 
 	// Rotation
 	EMovementDirection_ZMJ CalculateMovementDirection();
@@ -135,6 +140,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float StandingPlayRate;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float CrouchingPlayRate;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float StrdeBlend;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVelocityBlend_ZMJ VelocityBlend;
@@ -207,6 +214,7 @@ public:
 	float AnimatedWalkSpeed;
 	float AnimatedRunSpeed;
 	float AnimatedSprintSpeed;
+	float AnimatedCrouchSpeed;
 	float SmoothedAimingRotationInterpSpeed;
 	float VelocityBlendInterpSpeed;
 	float GroundedLeanInterpSpeed;

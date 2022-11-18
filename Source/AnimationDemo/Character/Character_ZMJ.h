@@ -39,6 +39,10 @@ public:
 	void LookUp(float Value);
 	UFUNCTION()
 	void LookRight(float Value);
+
+	UFUNCTION()
+	void StanceAction(FKey Key);
+	
 	
 	// Utility
 	FVector GetControlForwardVector();
