@@ -69,6 +69,22 @@ void ACharacter_ZMJ::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	PlayerInputComponent->BindAxis("LookUp/Down", this, &ACharacter_ZMJ::LookUp);
 
 	PlayerInputComponent->BindAction("StanceAction",IE_Pressed ,this, &ACharacter_ZMJ::StanceAction);
+	PlayerInputComponent->BindAction("SprintAction",IE_Pressed ,this, &ACharacter_ZMJ::SprintActionPressed);
+	PlayerInputComponent->BindAction("SprintAction",IE_Released ,this, &ACharacter_ZMJ::SprintActionReleased);
+	PlayerInputComponent->BindAction("JumpAction",IE_Pressed ,this, &ACharacter_ZMJ::JumpActionPressed);
+	PlayerInputComponent->BindAction("JumpAction",IE_Released ,this, &ACharacter_ZMJ::JumpActionReleased);
+}
+
+void ACharacter_ZMJ::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+	OnStanceChanged(EStance_ZMJ::Crouching);
+}
+
+void ACharacter_ZMJ::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+	OnStanceChanged(EStance_ZMJ::Standing);
 }
 
 
@@ -101,17 +117,48 @@ void ACharacter_ZMJ::StanceAction(FKey Key)
 		case EMovementState_ZMJ::Grounded:
 			if (Stance == EStance_ZMJ::Crouching)
 			{
-				Stance = EStance_ZMJ::Standing;
-				Crouch();
+				DesiredStance = EStance_ZMJ::Standing;
+				UnCrouch();
 			}
 			else
 			{
-				Stance = EStance_ZMJ::Crouching;
-				UnCrouch();
+				DesiredStance = EStance_ZMJ::Crouching;
+				Crouch();
 			}
 			break;
 		}
 	}
+}
+
+void ACharacter_ZMJ::SprintActionPressed(FKey Key)
+{
+	DesiredGait = EGait_ZMJ::Sprinting;
+}
+
+void ACharacter_ZMJ::SprintActionReleased(FKey Key)
+{
+	DesiredGait = EGait_ZMJ::Runing;
+}
+
+void ACharacter_ZMJ::JumpActionPressed(FKey Key)
+{
+	if (MovementAction == EMovementAction_ZMJ::None)
+	{
+		switch (MovementState)
+		{
+		case EMovementState_ZMJ::Grounded:
+		case EMovementState_ZMJ::InAir:
+			if (HasMovementInput)
+			{
+				
+			}
+			break;
+		}
+	}
+}
+
+void ACharacter_ZMJ::JumpActionReleased(FKey Key)
+{
 }
 
 FVector ACharacter_ZMJ::GetControlForwardVector()
@@ -126,6 +173,12 @@ FVector ACharacter_ZMJ::GetControlRightVector()
 	auto LocalRotation = FRotator::ZeroRotator;
 	LocalRotation.Yaw = GetControlRotation().Yaw;
 	return FRotationMatrix(LocalRotation).GetScaledAxis(EAxis::Y);
+}
+
+FVector ACharacter_ZMJ::GetCalpsuleBaseLocation(float ZOffset)
+{
+	auto CC = GetCapsuleComponent();
+	return CC->GetComponentLocation() - CC->GetUpVector() * (CC->GetScaledCapsuleHalfHeight() + ZOffset);
 }
 
 float ACharacter_ZMJ::GetAnimCurveValue(FName CurveName)
@@ -156,6 +209,12 @@ void ACharacter_ZMJ::PlayerMovementInput(bool IsForwardAxis, float AxisValue)
 		}
 		break;
 	}
+}
+
+FVector ACharacter_ZMJ::GetPlayerMovementInput()
+{
+	auto LocalVector = (GetControlForwardVector() * GetInputAxisValue(FName("MoveForward/Backwards"))) + (GetControlRightVector() * GetInputAxisValue(FName("MoveRight/Left")));
+	return LocalVector.GetSafeNormal(0.0001);
 }
 
 // 修复对角线手柄值
@@ -281,6 +340,11 @@ void ACharacter_ZMJ::OnMovementStateChanged(EMovementState_ZMJ NewMovementState)
 void ACharacter_ZMJ::OnGaitChanged(EGait_ZMJ NewActualGait)
 {
 	Gait = NewActualGait;
+}
+
+void ACharacter_ZMJ::OnStanceChanged(EStance_ZMJ NewStance)
+{
+	Stance = NewStance;
 }
 
 void ACharacter_ZMJ::OnRotationModeChanged(ERotationMode_ZMJ NewRotationMode)
@@ -562,11 +626,14 @@ void ACharacter_ZMJ::UpdateGroudedRotation()
 				break;
 			}
 
+			// 应用原地转弯动画中的RotationAmount曲线。旋转量曲线定义了每帧应该应用多少旋转，并计算为30fps动画。
 			auto LocalRotationAmount = GetAnimCurveValue(FName("RotationAmount"));
 			if (FMath::Abs(LocalRotationAmount) > 0.001)
 			{
 				auto Delta = GetWorld()->GetDeltaSeconds();
-				AddActorWorldRotation(FRotator(0.0f,0.0f,Delta*30.0f*LocalRotationAmount));
+				auto AddRotation = FRotator::ZeroRotator;
+				AddRotation.Yaw = Delta*30.0f*LocalRotationAmount;
+				AddActorWorldRotation(AddRotation);
 			}
 		}
 		break;
@@ -624,6 +691,34 @@ bool ACharacter_ZMJ::CanUpdateMovingRotation()
 	return (((IsMoving && HasMovementInput) || Speed > 150 ) && !HasAnyRootMotion());
 }
 
+bool ACharacter_ZMJ::MantleCheck(FMantle_TraceSettings_ZMJ TraceSettings,EDrawDebugTrace::Type DebugType)
+{
+	// 步骤1:向前寻找角色不能行走的墙/物体。
+	auto LocalLocation = GetCalpsuleBaseLocation(2.0f) + (GetPlayerMovementInput() * -30.f);
+	auto LocalOffset = FVector::ZeroVector;
+	LocalOffset.Z = (TraceSettings.MaxLedgeHeight + TraceSettings.MinLedgeHeight) * 0.5f;
+	FVector Start = LocalLocation + LocalOffset;
+	FVector End = Start +  GetPlayerMovementInput() * TraceSettings.ReachDistance;
+	float Radius = TraceSettings.ForwardTraceRadius;
+	float HalfHeight = (TraceSettings.MaxLedgeHeight - TraceSettings.MinLedgeHeight) * 0.5f  + 1.0f;
+	TArray<AActor*> IgnoreActors;
+	FHitResult OutHit;
+	UKismetSystemLibrary::CapsuleTraceSingle(GetWorld(),Start,End,Radius,HalfHeight,TraceTypeQuery3,false, IgnoreActors,GetTraceDebugType(DebugType),OutHit,true);
+
+	// 检测是否是可行走的路面
+	if (GetCharacterMovement()->IsWalkable(OutHit) && OutHit.bBlockingHit && !OutHit.bStartPenetrating)
+	{
+		FVector InitialTraceImpactPoint = OutHit.ImpactPoint;
+		FVector InitialTraceImpactNormal = OutHit.ImpactNormal;
+
+	}
+	else
+	{
+		return false;
+	}
+	return false;
+}
+
 void ACharacter_ZMJ::DrawDebugShapes()
 {
 	// if (true)
@@ -643,6 +738,12 @@ void ACharacter_ZMJ::DrawDebugShapes()
 	LocalColor = LocalVelocityZero ? FColor(0.25f,0.0f,0.25f) : LocalVelocity;*/
 	// DrawDebugDirectionalArrow(GetWorld(),LineStart,LineEnd,60,)
 	// GetWorld()->SpawnActor()
+}
+
+EDrawDebugTrace::Type ACharacter_ZMJ::GetTraceDebugType(EDrawDebugTrace::Type ShowTraceType)
+{
+	// TODO 这里是判断是不是要调试绘出图形 现在先默认返回调试
+	return ShowTraceType;
 }
 
 void ACharacter_ZMJ::SetViewMode(EViewMode_ZMJ NewViewMode)

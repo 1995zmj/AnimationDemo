@@ -26,6 +26,7 @@ void UAnimInstance_Character::OnInitializeAnimation()
 	AnimatedWalkSpeed = 150;
 	AnimatedRunSpeed = 350;
 	AnimatedCrouchSpeed = 150;
+	AnimatedSprintSpeed = 600;
 	TriggerPivotSpeedLimit = 200;
 
 
@@ -41,6 +42,7 @@ void UAnimInstance_Character::OnInitializeAnimation()
 	AimYawRateMaxRange = 270.0f;
 	MinPlayRate = 1.15f;
 	MaxPlayRate = 3.0f;
+	Turn180Threshold = 130;
 
 	// 默认参数
 	ShouldMove = false;
@@ -83,18 +85,26 @@ void UAnimInstance_Character::OnUpdateAnimation(float DeltaTimeX)
 		else
 		{
 			// 停止
-			// 原地旋转功能
-			// if (CanRotateInPlace())
-			// {
-			// 	RotateInPlaceCheck();
-			// }
-			// else
-			// {
-			// 	Rotate_L = false;
-			// 	Rotate_R = false;
-			// }
+			//
+			/*if (CanRotateInPlace())
+			{
+				RotateInPlaceCheck();
+			}
+			else
+			{
+				Rotate_L = false;
+				Rotate_R = false;
+			}*/
 
-			// 
+			//
+			if (CanTurnInPalce())
+			{
+				TurnInPlaceCheck();
+			}
+			else
+			{
+				ElapsedDelayTime = 0.0;
+			}
 				
 		}
 		if (LastShouldMove != ShouldMove)
@@ -163,15 +173,14 @@ void UAnimInstance_Character::UpdateCharacterInfo()
 
 void UAnimInstance_Character::UpdateAimingValues()
 {
-	/*// Interp瞄准旋转值以实现平滑的瞄准旋转变化。在计算角度之前插入旋转确保该值不受actor旋转变化的影响，允许缓慢的瞄准旋转变化与快速的actor旋转变化。
+	// Interp瞄准旋转值以实现平滑的瞄准旋转变化。在计算角度之前插入旋转确保该值不受actor旋转变化的影响，允许缓慢的瞄准旋转变化与快速的actor旋转变化。
 	SmoothedAimingRotation = FMath::RInterpTo(SmoothedAimingRotation,AimingRotation,MyDeltaTimeX,SmoothedAimingRotationInterpSpeed);
 
+	// 通过计算目标旋转与动作者旋转之间的差值，计算目标角和平滑目标角。
 	auto LocalRotation = AimingRotation - Character->GetActorRotation();
 	LocalRotation.Normalize();
 	AimingAngle.X = LocalRotation.Yaw;
 	AimingAngle.Y = LocalRotation.Pitch;
-
-	// 通过计算目标旋转与动作者旋转之间的差值，计算目标角和平滑目标角。
 	LocalRotation = SmoothedAimingRotation - Character->GetActorRotation();
 	LocalRotation.Normalize();
 	SmoothedAimingAngle.X = LocalRotation.Yaw;
@@ -201,8 +210,7 @@ void UAnimInstance_Character::UpdateAimingValues()
 	// 将瞄准偏航角分成3个独立的偏航时间。这3个值用于目标偏移行为，以改善完全围绕角色旋转时的目标偏移的混合。这允许你保持瞄准的响应，但仍然平稳地从左到右或从右到左混合。
 	LeftYawTime = FMath::GetMappedRangeValueClamped(FVector2D(0.0f, 180.0f), FVector2D(0.5f, 0.0f), FMath::Abs(SmoothedAimingAngle.X));
 	RightYawTime = FMath::GetMappedRangeValueClamped(FVector2D(0.0f, 180.0f), FVector2D(0.5f, 1.0f), FMath::Abs(SmoothedAimingAngle.X));
-	ForwardYawTime = FMath::GetMappedRangeValueClamped(FVector2D(-180.0f, 180.0f), FVector2D(0.0f, 1.0f), SmoothedAimingAngle.Y);
-	*/
+	ForwardYawTime = FMath::GetMappedRangeValueClamped(FVector2D(-180.0f, 180.0f), FVector2D(0.0f, 1.0f), SmoothedAimingAngle.X);
 
 }
 
@@ -276,6 +284,7 @@ bool UAnimInstance_Character::CanTurnInPalce()
 	return RotationMode == ERotationMode_ZMJ::LookingDirection && ViewMode == EViewMode_ZMJ::ThirdPerson && GetCurveValue(FName("Enable_Transition")) > 0.99;
 }
 
+// 只有当角色在第三人称视角下面向摄像机，以及“启用过渡”曲线完全加权时，才执行原地转弯检查。Enable_Transition曲线在AnimBP的某些状态下被修改，以便角色只能在这些状态下转弯。
 bool UAnimInstance_Character::CanRotateInPlace()
 {
 	return RotationMode == ERotationMode_ZMJ::Aiming || ViewMode == EViewMode_ZMJ::FirstPerson;
@@ -394,7 +403,7 @@ void UAnimInstance_Character::TurnInPlaceCheck()
 
 void UAnimInstance_Character::RotateInPlaceCheck()
 {
-	// Step 1: Check if the character should rotate left or right by checking if the Aiming Angle exceeds the threshold.
+	// 步骤1:通过检查瞄准角度是否超过阈值来检查角色是否应该向左或向右旋转。
 	Rotate_L = AimingAngle.X < RotateMinThreshold;
 	Rotate_R = AimingAngle.X > RotateMaxThreshold;
 
@@ -498,9 +507,8 @@ float UAnimInstance_Character::CalculateStrideBlend()
 float UAnimInstance_Character::CalculateStandingPlayRate()
 {
 	auto localRelativeSpeed = FMath::Lerp(Speed / AnimatedWalkSpeed,Speed / AnimatedRunSpeed,GetAnimCurve_Clamped(FName("Weight_Gait"),-1.0,0.0f,1.0f));
+	localRelativeSpeed = FMath::Lerp(localRelativeSpeed,Speed / AnimatedSprintSpeed,GetAnimCurve_Clamped(FName("Weight_Gait"),-2.0,0.0f,1.0f));
 
-	// TODO 这里之后要加入冲刺相关的
-	
 	return FMath::Clamp((localRelativeSpeed / StrdeBlend / GetOwningComponent()->GetComponentScale().Z),0.0f,3.0f);
 }
 

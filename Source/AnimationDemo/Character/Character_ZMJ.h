@@ -7,6 +7,7 @@
 #include "CharacterEnum_ZMJ.h"
 #include "CharacterInformationInterface.h"
 #include "GameFramework/Character.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "Character_ZMJ.generated.h"
 
 UCLASS()
@@ -28,6 +29,10 @@ public:
 
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+
+	// EventGraph
+	virtual void OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
+	virtual void OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust) override;
 	// PlayerInputGraph
 	// 运动输入
 	UFUNCTION()
@@ -42,14 +47,22 @@ public:
 
 	UFUNCTION()
 	void StanceAction(FKey Key);
-	
-	
+	UFUNCTION()
+	void SprintActionPressed(FKey Key);
+	UFUNCTION()
+	void SprintActionReleased(FKey Key);
+	UFUNCTION()
+	void JumpActionPressed(FKey Key);
+	UFUNCTION()
+	void JumpActionReleased(FKey Key);
 	// Utility
 	FVector GetControlForwardVector();
 	FVector GetControlRightVector();
+	FVector GetCalpsuleBaseLocation(float ZOffset);
 	float GetAnimCurveValue(FName CurveName);
 	// Input
 	void PlayerMovementInput(bool IsForwardAxis, float AxisValue);
+	FVector GetPlayerMovementInput();
 	float FixDiagonalGamepadValues(float AxisValue);
 	// EssentialInformation
 	void SetEssentialValues();
@@ -61,6 +74,7 @@ public:
 	void OnMovementModeChangedDDelegateEvent(ACharacter* Character, EMovementMode PrevMovementMode, uint8 PreviousCustomMode);
 	void OnCharacterMovementModeChanged(EMovementMode PrevMovementMode, EMovementMode NewMovementMode, uint8 PrevCustomMode, uint8 NewCustomMode);
 	void OnMovementStateChanged(EMovementState_ZMJ NewMovementState);
+	void OnStanceChanged(EStance_ZMJ NewStance);
 	void OnGaitChanged(EGait_ZMJ NewActualGait);
 	void OnRotationModeChanged(ERotationMode_ZMJ NewRotationMode);
 	void OnViewModeChanged(EViewMode_ZMJ NewViewMode);
@@ -81,8 +95,11 @@ public:
 	void LimitRotation(float AimYawMin,float AimYawMax,float InterpSpeed);
 	float CalculateGroundedRotationRate();
 	bool CanUpdateMovingRotation();
+	// MantleSystem
+	bool MantleCheck(FMantle_TraceSettings_ZMJ TraceSettings,EDrawDebugTrace::Type DebugType);
 	// Debug
 	void DrawDebugShapes();
+	EDrawDebugTrace::Type GetTraceDebugType(EDrawDebugTrace::Type ShowTraceType);
 	// CharacterStates Interfaces
 	void SetViewMode(EViewMode_ZMJ NewViewMode);
 	void SetGait(EGait_ZMJ NewGait);

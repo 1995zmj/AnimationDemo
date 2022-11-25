@@ -121,3 +121,25 @@ public:
 	EOverlayState_ZMJ OverlaySate;
 };
 
+USTRUCT(BlueprintType)
+struct ANIMATIONDEMO_API FMantle_TraceSettings_ZMJ
+{
+	GENERATED_BODY()
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MaxLedgeHeight;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float MinLedgeHeight;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float ReachDistance;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float ForwardTraceRadius;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float DownwardTraceRadius;
+
+};
+
