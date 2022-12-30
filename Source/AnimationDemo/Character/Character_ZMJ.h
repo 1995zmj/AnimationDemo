@@ -110,6 +110,10 @@ public:
 	UFUNCTION(BlueprintCallable)
 	virtual bool GetEssentialValues(FCharacterInformation_ZMJ& OutCharacterInformation) override;
 	virtual bool GetCurrentStates(FCharacterStates_ZMJ& OutCharacterStates) override;
+
+
+	// 覆盖基类的
+	virtual void OnJumped_Implementation() override;
 public:
 	// References
 	UPROPERTY()

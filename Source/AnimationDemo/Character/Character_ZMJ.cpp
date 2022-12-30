@@ -5,6 +5,7 @@
 
 #include "DrawDebugHelpers.h"
 #include "K2Node_GetDataTableRow.h"
+#include "AnimationDemo/Animation/AnimInstance_Character.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "VisualLogger/VisualLogger.h"
@@ -147,11 +148,18 @@ void ACharacter_ZMJ::JumpActionPressed(FKey Key)
 		switch (MovementState)
 		{
 		case EMovementState_ZMJ::Grounded:
-		case EMovementState_ZMJ::InAir:
-			if (HasMovementInput)
+			switch (Stance)
 			{
-				
+			case EStance_ZMJ::Standing:
+				Jump();
+				break;
+			case EStance_ZMJ::Crouching:
+				UnCrouch();
+				break;
 			}
+			break;
+		case EMovementState_ZMJ::InAir:
+			
 			break;
 		}
 	}
@@ -159,6 +167,7 @@ void ACharacter_ZMJ::JumpActionPressed(FKey Key)
 
 void ACharacter_ZMJ::JumpActionReleased(FKey Key)
 {
+	StopJumping();
 }
 
 FVector ACharacter_ZMJ::GetControlForwardVector()
@@ -196,6 +205,7 @@ void ACharacter_ZMJ::PlayerMovementInput(bool IsForwardAxis, float AxisValue)
 	switch (MovementState)
 	{
 	case EMovementState_ZMJ::Grounded:
+	case EMovementState_ZMJ::InAir:
 		// 默认的相机相对运动行为
 		if (IsForwardAxis)
 		{
@@ -326,6 +336,9 @@ void ACharacter_ZMJ::OnCharacterMovementModeChanged(EMovementMode PrevMovementMo
 	case  EMovementMode::MOVE_Walking:
 	case  EMovementMode::MOVE_NavWalking:
 		SetMovementState(EMovementState_ZMJ::Grounded);
+		break;
+	case EMovementMode::MOVE_Falling:
+		SetMovementState(EMovementState_ZMJ::InAir);
 		break;
 	}
 }
@@ -804,4 +817,18 @@ bool ACharacter_ZMJ::GetCurrentStates(FCharacterStates_ZMJ& OutCharacterStates)
 	OutCharacterStates.ViewMode				= ViewMode;
 	OutCharacterStates.OverlaySate			= OverlayState;
 	return  true;
+}
+
+void ACharacter_ZMJ::OnJumped_Implementation()
+{
+	Super::OnJumped_Implementation();
+	if (Speed > 100.0f)
+	{
+		InAirRotation = LastVelocityRotation;
+	}
+	else
+	{
+		InAirRotation = GetActorRotation();
+	}
+	Cast<UAnimInstance_Character>(MainAnimInstance)->Jumped();
 }

@@ -3,8 +3,10 @@
 
 #include "AnimInstance_Character.h"
 #include "AnimationDemo/Character/CharacterInformationInterface.h"
+#include "Components/CapsuleComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "VisualLogger/VisualLogger.h"
 
 void UAnimInstance_Character::OnInitializeAnimation()
@@ -44,6 +46,13 @@ void UAnimInstance_Character::OnInitializeAnimation()
 	MaxPlayRate = 3.0f;
 	Turn180Threshold = 130;
 
+	InAirLeanInterpSpeed = 4.0f;
+
+	//IK Config
+	FootHeight = 13.5f;
+	IK_TraceDistanceAboveFoot = 50.0f;
+	IK_TraceDistanceBelowFoot = 45.0f;
+	
 	// 默认参数
 	ShouldMove = false;
 }
@@ -71,10 +80,11 @@ void UAnimInstance_Character::OnUpdateAnimation(float DeltaTimeX)
 	Speed,
 	*Acceleration.ToString()
 	);
+	bool LastShouldMove = ShouldMove;
+
 	switch (MovementState)
 	{
 	case EMovementState_ZMJ::Grounded:
-		auto LastShouldMove = ShouldMove;
 		ShouldMove = ShouldMoveCheck();
 		if (ShouldMove)
 		{
@@ -122,6 +132,9 @@ void UAnimInstance_Character::OnUpdateAnimation(float DeltaTimeX)
 			}
 		}
 		
+		break;
+	case EMovementState_ZMJ::InAir:
+		UpdateInAirValues();
 		break;
 	}
 
@@ -216,10 +229,56 @@ void UAnimInstance_Character::UpdateAimingValues()
 
 void UAnimInstance_Character::UpdateLayerValues()
 {
+	// 通过获得与“目标偏移遮罩”相反的权重来获得“目标偏移”权重。
+	Enable_AimOffset = FMath::Lerp(1.0f,0.0f,GetCurveValue(TEXT("Mask_AimOffset")));
+
+	// 设置基本姿势权重
+	BasePose_N = GetCurveValue(TEXT("BasePose_N"));
+	BasePose_CLF = GetCurveValue(TEXT("BasePose_CLF"));
+
+	// 设置每个身体部位的添加量权重
+	SpineAdd	= GetCurveValue(TEXT("Layering_Spine_Add"));
+	HeadAdd		= GetCurveValue(TEXT("Layering_Head_Add"));
+	ArmLAdd		= GetCurveValue(TEXT("Layering_Arm_L_Add"));
+	ArmRAdd		= GetCurveValue(TEXT("Layering_Arm_R_Add"));
+
+	// 设置臂是否应该融入网格空间或局部空间。网格空间权重将始终为1，除非局部空间(LS)曲线完全加权。
+	ArmL_LS		= GetCurveValue(TEXT("Layering_Arm_L_LS"));
+	ArmR_LS		= GetCurveValue(TEXT("Layering_Arm_R_LS"));
+	ArmL_MS		= FMath::FloorToInt(ArmL_LS) - 1;
+	ArmR_MS		= FMath::FloorToInt(ArmR_LS) - 1;
+
+	// 设置手动覆盖权重
+	HandL		= GetCurveValue(TEXT("Layering_Hand_L"));
+	HandR		= GetCurveValue(TEXT("Layering_Hand_R"));
+
+	// 混合并设置手IK权重，以确保仅在手臂层允许的情况下对其进行加权。
+	Enable_HandIK_L = FMath::Lerp(0.0f,GetCurveValue("Enable_HandIK_L"),GetCurveValue("Layering_Arm_L"));
+	Enable_HandIK_R = FMath::Lerp(0.0f,GetCurveValue("Enable_HandIK_R"),GetCurveValue("Layering_Arm_R"));
 }
 
 void UAnimInstance_Character::UpdateFootIK()
 {
+	SetFootLocking(FName("Enable_FootIK_L"),FName("FootLock_L"),FName("ik_foot_l"),FootLock_L_Alpha,FootLock_L_Location,FootLock_L_Rotation);
+	SetFootLocking(FName("Enable_FootIK_R"),FName("FootLock_R"),FName("ik_foot_r"),FootLock_R_Alpha,FootLock_R_Location,FootLock_R_Rotation);
+	FVector FootOffset_L_Target;
+	FVector FootOffset_R_Target;
+	switch (MovementState)
+	{
+	case EMovementState_ZMJ::None:
+	case EMovementState_ZMJ::Grounded:
+	case EMovementState_ZMJ::Mantling:
+		// 不在空中时更新所有“脚锁定”和“脚偏移”值
+		SetFootOffsets(FName("Enable_FootIK_L"),FName("ik_foot_l"),FName("root"),FootOffset_L_Target,FootOffset_L_Location,FootOffset_L_Rotation);
+		SetFootOffsets(FName("Enable_FootIK_R"),FName("ik_foot_r"),FName("root"),FootOffset_R_Target,FootOffset_R_Location,FootOffset_R_Rotation);
+
+		SetPelvisIKOffset(FootOffset_L_Target,FootOffset_R_Target);
+		break;
+	case EMovementState_ZMJ::InAir:
+		SetPelvisIKOffset(FVector::ZeroVector,FVector::ZeroVector);
+		ResetIKOffsets();
+		break;
+	}
 }
 
 void UAnimInstance_Character::UpdateMovementValues()
@@ -271,6 +330,17 @@ void UAnimInstance_Character::UpdateRotationValues()
 	BYaw = FB.Y;
 	LYaw = LR.X;
 	RYaw = LR.Y;
+}
+
+void UAnimInstance_Character::UpdateInAirValues()
+{
+	// 更新下降速度。只在空中设置这个值可以让你在AnimGraph中使用它来计算着陆强度。否则，着陆时Z速度将返回0。
+	FallSpeed = Velocity.Z;
+	// 设置土地预测权重。
+	LandPrediction = CalculateLandPrediction();
+
+	// Interp并设置In Air Lean Amount
+	LeanAmount = InterpLeanAmount(LeanAmount,CalculateInAirLeanAmount(),InAirLeanInterpSpeed,MyDeltaTimeX);
 }
 
 bool UAnimInstance_Character::ShouldMoveCheck()
@@ -512,9 +582,212 @@ float UAnimInstance_Character::CalculateStandingPlayRate()
 	return FMath::Clamp((localRelativeSpeed / StrdeBlend / GetOwningComponent()->GetComponentScale().Z),0.0f,3.0f);
 }
 
+// 通过跟踪速度方向来计算着陆预测权重，找到角色坠落的可行走表面，并获得“时间”(范围为0-1,1为最大值，0为即将着陆)直到撞击。土地预测曲线用于控制时间如何影响平滑混合的最终权重。
 float UAnimInstance_Character::CalculateCrouchingPlayRate()
 {
 	return FMath::Clamp((Speed / AnimatedCrouchSpeed / StrdeBlend/ GetOwningComponent()->GetComponentScale().Z),0.0f,2.0f);
+}
+
+// 通过跟踪速度方向来计算着陆预测权重，找到角色坠落的可行走表面，并获得“时间”(范围为0-1,1为最大值，0为即将着陆)直到撞击。土地预测曲线用于控制时间如何影响平滑混合的最终权重。
+float UAnimInstance_Character::CalculateLandPrediction()
+{
+	if (FallSpeed < -200.0f)
+	{
+		auto LocalCapsuleComponent = Character->GetCapsuleComponent();
+		auto LocalStart = LocalCapsuleComponent->GetComponentLocation();
+		auto LocalEndOffset = FVector::ZeroVector;
+		LocalEndOffset.X = Velocity.X;
+		LocalEndOffset.Y = Velocity.Y;
+		LocalEndOffset.Z = FMath::Clamp(Velocity.Z, -4000.0f, -200.0f);
+		LocalEndOffset = LocalEndOffset.GetUnsafeNormal() * FMath::GetMappedRangeValueClamped(FVector2D(0.0f, -4000.0f), FVector2D(50.0f, 2000.0f), Velocity.Z);;
+		auto LocalEnd = LocalStart + LocalEndOffset;
+		TArray<AActor*> IgnoreActors;
+		IgnoreActors.Add(Character);
+		FHitResult OutHit;
+		UKismetSystemLibrary::CapsuleTraceSingleByProfile(GetWorld(),LocalStart,LocalEnd,LocalCapsuleComponent->GetUnscaledCapsuleRadius(),LocalCapsuleComponent->GetUnscaledCapsuleHalfHeight(),
+			FName("Pawn"),false,IgnoreActors,GetTraceDebugType(EDrawDebugTrace::ForOneFrame),OutHit,true,FColor::Red,FColor::Green,5.0f);
+		bool bLocalWalkable = Cast<UCharacterMovementComponent>(Character->GetMovementComponent())->IsWalkable(OutHit);
+		bool bLocalBlockingHit = OutHit.bBlockingHit;
+		bool bTest = OutHit.IsValidBlockingHit();
+		if (bLocalWalkable && bLocalBlockingHit && bTest)
+		{
+			return FMath::Lerp(LandPredictionCurve->GetFloatValue(OutHit.Time),0.0f,GetCurveValue(FName("Mask_LandPrediction")));
+		}
+		else
+		{
+			return 0.0f;
+		}
+	}
+	else
+	{
+		return 0.0f;
+	}
+}
+
+// 使用相对速度方向和数量来决定角色在空中应该倾斜多少。在空中倾斜曲线获得下降速度，并被用作乘数，在从向上移动到向下移动的过渡中平稳地逆转倾斜方向。
+FLeanAmount_ZMJ UAnimInstance_Character::CalculateInAirLeanAmount()
+{
+	auto LocalVector = Character->GetActorRotation().UnrotateVector(Velocity) / 350.0f;
+	FLeanAmount_ZMJ OutResult;
+	OutResult.LR = LocalVector.Y * LeanInAirCurve->GetFloatValue(FallSpeed);
+	OutResult.FB = LocalVector.X * LeanInAirCurve->GetFloatValue(FallSpeed);
+	return OutResult;
+}
+
+void UAnimInstance_Character::SetFootOffsets(FName Enable_FootIK_Curve, FName IKFootBone, FName RootBone,
+	FVector& CurrentLocationTarget, FVector& CurrentLocationOffset, FRotator& CurrentRotationOffset)
+{
+	if( GetCurveValue(Enable_FootIK_Curve) > 0 )
+	{
+		// 步骤1：从脚位置向下追踪以找到几何图形。如果曲面是可行走的，请保存“碰撞位置”和“法线”。
+		FVector IKFootFloorLocation;
+		IKFootFloorLocation.X = GetOwningComponent()->GetSocketLocation(IKFootBone).X;
+		IKFootFloorLocation.Y = GetOwningComponent()->GetSocketLocation(IKFootBone).Y;
+		IKFootFloorLocation.Z = GetOwningComponent()->GetSocketLocation(RootBone).Z;
+
+		auto StartLocation = IKFootFloorLocation;
+		StartLocation.Z += IK_TraceDistanceAboveFoot;
+		auto EndLocation = IKFootFloorLocation;
+		EndLocation.Z -= IK_TraceDistanceBelowFoot;
+		TArray<AActor*> IgnoreActors;
+		IgnoreActors.Add(Character);
+		FHitResult OutHit;
+
+		UKismetSystemLibrary::LineTraceSingle(GetWorld(),StartLocation,EndLocation,ETraceTypeQuery::TraceTypeQuery1,false,IgnoreActors,GetTraceDebugType(EDrawDebugTrace::ForOneFrame),
+		OutHit,true,FColor::Red,FColor::Green,5.0f);
+
+		FVector ImpactPoint;
+		FVector ImpactNormal;
+		FRotator TargetRotationOffset;
+		
+		if (Character->GetCharacterMovement()->IsWalkable(OutHit))
+		{
+			ImpactPoint = OutHit.ImpactPoint;
+			ImpactNormal = OutHit.ImpactNormal;
+
+			// 步骤1.1：找出撞击点与预期（平坦）地板位置之间的位置差异。这些值通过标称值乘以脚高度进行偏移，以在倾斜曲面上获得更好的行为。
+			CurrentLocationTarget = ImpactNormal * FootHeight + ImpactPoint - FVector(IKFootFloorLocation.X,IKFootFloorLocation.Y,IKFootFloorLocation.Z + FootHeight);
+			// 步骤1.2：通过获取碰撞法线的Atan2来计算旋转偏移。
+			TargetRotationOffset.Roll = (180.f)/PI * FMath::Atan2(ImpactNormal.Y, ImpactNormal.Z);
+			TargetRotationOffset.Pitch = (180.f)/PI * FMath::Atan2(ImpactNormal.X, ImpactNormal.Z) * -1;
+			TargetRotationOffset.Yaw = 0;
+		}
+
+
+		// 步骤2：将当前位置偏移插入到新的目标值。根据新目标是高于还是低于当前目标，以不同的速度进行插值。
+		if (CurrentLocationOffset.Z > CurrentLocationTarget.Z)
+		{
+			CurrentLocationOffset = FMath::VInterpTo(CurrentLocationOffset,CurrentLocationTarget,MyDeltaTimeX,30.0f);
+		}
+		else
+		{
+			CurrentLocationOffset = FMath::VInterpTo(CurrentLocationOffset,CurrentLocationTarget,MyDeltaTimeX,15.0f);
+		}
+
+		// 步骤3：将“当前旋转偏移”插值到新的目标值。
+		CurrentRotationOffset = FMath::RInterpTo(CurrentRotationOffset,TargetRotationOffset,MyDeltaTimeX,30.0f);
+	}
+	else
+	{
+		CurrentLocationOffset = FVector::ZeroVector;
+		CurrentRotationOffset = FRotator::ZeroRotator;
+	}
+}
+
+void UAnimInstance_Character::SetPelvisIKOffset(FVector FootOffset_L_Target, FVector FootOffset_R_Target)
+{
+	// 通过找到脚IK的平均权重来计算骨盆Alpha。如果alpha为0，请清除偏移。
+	PelvisAlpha = (GetCurveValue(FName("Enable_FootIK_L")) + GetCurveValue(FName("Enable_FootIK_R"))) / 2;
+	FVector PelvisTarget;
+	if (PelvisAlpha > 0.0f)
+	{
+		// 步骤1：将新的骨盆目标设置为最低的脚部偏移
+		if (FootOffset_L_Target.Z < FootOffset_R_Target.Z)
+		{
+			PelvisTarget = FootOffset_L_Target;
+		}
+		else
+		{
+			PelvisTarget = FootOffset_R_Target;
+		}
+
+		// 步骤2：将“当前骨盆偏移”插值到新的目标值。根据新目标是高于还是低于当前目标，以不同的速度进行插值。
+		if (PelvisTarget.Z > PelvisOffset.Z)
+		{
+			PelvisOffset = FMath::VInterpTo(PelvisOffset,PelvisTarget,MyDeltaTimeX,10.0f);
+		}
+		else
+		{
+			PelvisOffset = FMath::VInterpTo(PelvisOffset,PelvisTarget,MyDeltaTimeX,15.0f);
+		}
+	}
+	else
+	{
+		PelvisOffset = FVector::ZeroVector;
+	}
+}
+
+void UAnimInstance_Character::SetFootLocking(FName Enable_FootIK_Curve, FName FootLockCurve, FName IKFootBone,
+                                             float& CurrentFootLockAlpha, FVector& CurrentFootLockLocation, FRotator& CurrentFootLockRotation)
+{
+	// 只有曲线 Enable_FootIK_Curve 的值大于0才能有脚部IK
+	if( GetCurveValue(Enable_FootIK_Curve) > 0 )
+	{
+		// 步骤1：设置“局部锁定曲线”值
+		float FootLockCurveValue = GetCurveValue(FootLockCurve);
+
+		// 步骤2：仅当新值小于当前值或等于1时更新FootLock Alpha。这使得脚只能从锁定位置或锁定到新位置，而不能融入。
+		if(FootLockCurveValue >= 0.99 || FootLockCurveValue < CurrentFootLockAlpha)
+		{
+			CurrentFootLockAlpha = FootLockCurveValue;
+		}
+
+		// 步骤3：如果“脚锁定”曲线等于1，请在零部件空间中保存新的锁定位置和旋转。
+		if (CurrentFootLockAlpha >= 0.99)
+		{
+			auto LocalTransform = GetOwningComponent()->GetSocketTransform(IKFootBone,RTS_Component);
+			CurrentFootLockLocation = LocalTransform.GetLocation();
+			CurrentFootLockRotation = LocalTransform.Rotator();
+		}
+
+		// 步骤4：如果“脚锁定Alpha”具有权重，请更新“脚锁定”偏移，以在胶囊移动时将脚固定到位。
+		if (CurrentFootLockAlpha > 0.0)
+		{
+			SetFootLockOffsets(CurrentFootLockLocation,CurrentFootLockRotation);
+		}
+	}
+}
+
+void UAnimInstance_Character::SetFootLockOffsets(FVector& LocalLocation, FRotator& LocalRotation)
+{
+	// 使用当前和上次更新的旋转之间的差值来计算脚应该旋转多少才能保持在地面上
+	auto RotationDifference = FRotator::ZeroRotator;
+	if (Character->GetCharacterMovement()->IsMovingOnGround())
+	{
+		RotationDifference = Character->GetActorRotation() - Character->GetCharacterMovement()->GetLastUpdateRotation();
+		RotationDifference.Normalize();
+	}
+
+	// 获取帧之间相对于网格旋转的距离，以确定脚在地面上保持踩踏时应偏移的距离。
+	auto LocationDifference = GetOwningComponent()->GetComponentRotation().UnrotateVector(Velocity * GetWorld()->GetDeltaSeconds());
+
+	// 从当前局部位置减去位置差，然后将其旋转旋转差，以使脚保持在构件空间中。
+	auto Local =  LocalLocation - LocationDifference;
+	LocalLocation = Local.RotateAngleAxis(RotationDifference.Yaw, FVector(0.0f,0.0f,-1.0f));
+
+	// 从当前“局部旋转”中减去“旋转差”以获得新的局部旋转。
+	LocalRotation = LocalRotation - RotationDifference;
+	LocalRotation.Normalize();
+}
+
+void UAnimInstance_Character::ResetIKOffsets()
+{
+	// 插值脚IK偏移回0
+	FootOffset_L_Location = FMath::VInterpTo(FootOffset_L_Location,FVector::ZeroVector,MyDeltaTimeX,15.0f);
+	FootOffset_R_Location = FMath::VInterpTo(FootOffset_R_Location,FVector::ZeroVector,MyDeltaTimeX,15.0f);
+	
+	FootOffset_L_Rotation = FMath::RInterpTo(FootOffset_L_Rotation,FRotator::ZeroRotator,MyDeltaTimeX,15.0f);
+	FootOffset_R_Rotation = FMath::RInterpTo(FootOffset_L_Rotation,FRotator::ZeroRotator,MyDeltaTimeX,15.0f);
 }
 
 // 计算运动方向。这个值表示角色在看方向/瞄准旋转模式中相对于相机移动的方向，并在循环混合动画图层中使用，以混合到适当的方向状态。
@@ -604,6 +877,23 @@ FLeanAmount_ZMJ UAnimInstance_Character::InterpLeanAmount(FLeanAmount_ZMJ Curren
 	Result.LR = FMath::FInterpTo(Current.LR,Target.LR,DeltaTime,InterpSpeed);
 	Result.FB = FMath::FInterpTo(Current.FB,Target.FB,DeltaTime,InterpSpeed);
 	return Result;
+}
+
+EDrawDebugTrace::Type UAnimInstance_Character::GetTraceDebugType(EDrawDebugTrace::Type ShowTraceType)
+{
+	// TODO 这里是判断是不是要调试绘出图形 现在先默认返回调试
+	return ShowTraceType;
+}
+
+void UAnimInstance_Character::Jumped()
+{
+	bJumped = true;
+	JumpPlayRate = FMath::GetMappedRangeValueClamped(FVector2D(0.0f, 600.0f), FVector2D(1.2, 1.5), Speed);
+	FTimerHandle DelayHandle;
+	GetWorld()->GetTimerManager().SetTimer(DelayHandle,[this]
+	{
+		bJumped = false;
+	},0.1f,false);
 }
 
 float UAnimInstance_Character::GetAnimCurve_Clamped(FName Name, float Bias, float ClmapMin, float ClampMax)

@@ -7,6 +7,7 @@
 #include "AnimInstanceStruct_ZMJ.h"
 #include "Animation/AnimInstance.h"
 #include "AnimationDemo/Character/CharacterStruct_ZMJ.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "AnimInstance_Character.generated.h"
 
 /**
@@ -36,6 +37,7 @@ public:
 	void UpdateFootIK();
 	void UpdateMovementValues();
 	void UpdateRotationValues();
+	void UpdateInAirValues();
 	// Grounded
 	bool ShouldMoveCheck();
 	bool CanTurnInPalce();
@@ -53,7 +55,15 @@ public:
 	float CalculateStrideBlend();
 	float CalculateStandingPlayRate();
 	float CalculateCrouchingPlayRate();
-
+	// In Air
+	float CalculateLandPrediction();
+	FLeanAmount_ZMJ CalculateInAirLeanAmount();
+	// Foot IK
+	void SetFootOffsets(FName Enable_FootIK_Curve, FName IKFootBone, FName RootBone, FVector& CurrentLocationTarget, FVector& CurrentLocationOffset, FRotator& CurrentRotationOffset);
+	void SetPelvisIKOffset(FVector FootOffset_L_Target,FVector FootOffset_R_Target);
+	void SetFootLocking(FName Enable_FootIK_Curve, FName FootLockCurve, FName IKFootBone, float& CurrentFootLockAlpha, FVector& CurrentFootLockLocation, FRotator& CurrentFootLockRotation);
+	void SetFootLockOffsets(FVector& LocalLocation, FRotator& LocalRotation);
+	void ResetIKOffsets();
 	// Rotation
 	EMovementDirection_ZMJ CalculateMovementDirection();
 	EMovementDirection_ZMJ CalculateQuadrant(EMovementDirection_ZMJ Current, float FR_Threshold, float FL_Threshold, float BR_Threshold, float BL_Threshold,
@@ -62,8 +72,10 @@ public:
 	// Interpolation
 	FVelocityBlend_ZMJ InterpVelocityBlend(FVelocityBlend_ZMJ Current, FVelocityBlend_ZMJ Target, float InterpSpeed, float DeltaTime);
 	FLeanAmount_ZMJ InterpLeanAmount(FLeanAmount_ZMJ Current, FLeanAmount_ZMJ Target, float InterpSpeed, float DeltaTime);
-
-
+	// Debug
+	EDrawDebugTrace::Type GetTraceDebugType(EDrawDebugTrace::Type ShowTraceType);
+	// Interfaces
+	void Jumped();
 	// Macros
 	float GetAnimCurve_Compact();
 	float GetAnimCurve_Clamped(FName Name, float Bias, float ClmapMin, float ClampMax);
@@ -156,17 +168,94 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float RYaw;
 
+	// Anim Graph - In Air
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool bJumped;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float JumpPlayRate;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float FallSpeed;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float LandPrediction;
+
 	// Anim Graph - Aiming Values
 	FRotator SmoothedAimingRotation;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FRotator SpineRotation;
 	FVector2D AimingAngle;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FVector2D SmoothedAimingAngle;
 	float AimSweepTime;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float InputYawOffsetTime;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float ForwardYawTime;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float LeftYawTime;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float RightYawTime;
 
+	// Anim Graph - Layer Blending
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float Enable_AimOffset;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float BasePose_N;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float BasePose_CLF;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float SpineAdd;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    float HeadAdd;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float ArmLAdd;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float ArmRAdd;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float ArmL_LS;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float ArmR_LS;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float ArmL_MS;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    float ArmR_MS;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    float HandL;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    float HandR;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float Enable_HandIK_L;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float Enable_HandIK_R;
+
+	// Anim Graph - Foot IK
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float FootLock_L_Alpha;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FVector FootLock_L_Location;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FRotator FootLock_L_Rotation;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    float FootLock_R_Alpha;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    FVector FootLock_R_Location;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    FRotator FootLock_R_Rotation;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FVector FootOffset_L_Location;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FRotator FootOffset_L_Rotation;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FVector FootOffset_R_Location;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FRotator FootOffset_R_Rotation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FVector PelvisOffset;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float PelvisAlpha;
+	
 	// TurnInPlace
 	float TurnCheckMinAngle;
 	float Turn180Threshold;
@@ -207,6 +296,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	class UCurveFloat* StrideBlend_C_Walk;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	class UCurveFloat* LandPredictionCurve;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	class UCurveFloat* LeanInAirCurve;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	class UCurveVector* YawOffset_FB;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	class UCurveVector* YawOffset_LR;
@@ -218,7 +311,11 @@ public:
 	float SmoothedAimingRotationInterpSpeed;
 	float VelocityBlendInterpSpeed;
 	float GroundedLeanInterpSpeed;
+	float InAirLeanInterpSpeed;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	float TriggerPivotSpeedLimit;
+	float FootHeight;
+	float IK_TraceDistanceAboveFoot;
+	float IK_TraceDistanceBelowFoot;
 };
 
